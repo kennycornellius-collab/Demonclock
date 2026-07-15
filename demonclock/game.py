@@ -67,10 +67,20 @@ def handle_interact(state: GameState) -> None:
     if choice != "1":
         return
 
-    def choose_action(fighter: combat.Combatant, foe: combat.Combatant) -> combat.CombatAction:
-        print(f"Your HP: {fighter.hp}/{fighter.hp_max}  |  {foe.name} HP: {foe.hp}/{foe.hp_max}")
-        sub_choice = input("1) Attack  2) Flee\n> ").strip()
-        return combat.CombatAction.FLEE if sub_choice == "2" else combat.CombatAction.ATTACK
+    def choose_action(
+        fighter: combat.Combatant, foe: combat.Combatant, options: list
+    ):
+        print(f"Your HP: {fighter.hp}/{fighter.hp_max} MANA: {fighter.mana}/{fighter.mana_max}  |  {foe.name} HP: {foe.hp}/{foe.hp_max}")
+        for i, skill in enumerate(options, start=1):
+            print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
+        print(f"  {len(options) + 1}) Flee")
+        sub_choice = input("> ").strip()
+        if sub_choice == str(len(options) + 1):
+            return None
+        try:
+            return options[int(sub_choice) - 1]
+        except (ValueError, IndexError):
+            return options[0]  # invalid input defaults to the first (Basic Attack)
 
     _result, log = combat.run_combat(state.player, enemy, choose_action)
     for line in log:

@@ -2,6 +2,7 @@ from demonclock import db
 from demonclock.clock import Clock
 from demonclock.player import add_item, new_player
 from demonclock.seed import new_default_world
+from demonclock.skills import Effect, EffectKind, Skill, StatType
 
 
 def test_no_save_yet_returns_none(tmp_path):
@@ -21,6 +22,19 @@ def test_save_then_load_round_trips_world_player_clock(tmp_path):
     player.gold = 42
     player.hp = 77
     add_item(player, "amulet", "Tarnished Amulet", quantity=1)
+    player.skills = [
+        Skill(
+            id="custom_bolt",
+            name="Custom Bolt",
+            description="A test skill exercising effect + stat round-tripping.",
+            effects=[Effect(EffectKind.DAMAGE), Effect(EffectKind.DEBUFF, stat=StatType.DEFENSE)],
+            attribute_type=StatType.MAGIC,
+            mana_cost=7,
+            base_damage=13,
+            attribute_multiplier=1.5,
+            cooldown=2,
+        ),
+    ]
     clock = Clock(current_day=13)
 
     db.save_game(conn, world, player, clock)
@@ -39,6 +53,8 @@ def test_save_then_load_round_trips_world_player_clock(tmp_path):
     assert loaded_player.inventory[0].item_id == "amulet"
     assert loaded_player.inventory[0].quantity == 1
 
+    assert loaded_player.skills == player.skills
+
     assert set(loaded_world.nodes.keys()) == set(world.nodes.keys())
     reloaded_link = loaded_world.get_link("village", "market")
     assert reloaded_link.status == "blocked"
@@ -46,6 +62,19 @@ def test_save_then_load_round_trips_world_player_clock(tmp_path):
     # the atomic-block invariant should still hold after a round trip
     assert loaded_world.get_link("market", "village").status == "blocked"
 
+    conn.close()
+
+
+def test_starter_skills_persist_in_order(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert [s.id for s in loaded_player.skills] == [s.id for s in player.skills]
     conn.close()
 
 

@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS inventory (
     quantity INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS skills (
+    sort_order INTEGER NOT NULL,
+    data TEXT NOT NULL   -- JSON-encoded Skill.to_dict() (learned skills only;
+                         -- the universal BASIC_ATTACK is never persisted)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -88,6 +94,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM links")
     conn.execute("DELETE FROM player")
     conn.execute("DELETE FROM inventory")
+    conn.execute("DELETE FROM skills")
 
     for node in world.nodes.values():
         conn.execute(
@@ -137,6 +144,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO inventory (item_id, name, quantity) VALUES (?, ?, ?)",
             (item.item_id, item.name, item.quantity),
         )
+    for sort_order, skill in enumerate(player.skills):
+        conn.execute(
+            "INSERT INTO skills (sort_order, data) VALUES (?, ?)",
+            (sort_order, json.dumps(skill.to_dict())),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -156,6 +168,7 @@ def load_game(conn: sqlite3.Connection):
     no save exists yet."""
     from .clock import Clock
     from .models import InventoryItem, Link, Node, Player
+    from .skills import Skill
     from .world import World
 
     if not has_save(conn):
@@ -184,11 +197,15 @@ def load_game(conn: sqlite3.Connection):
         InventoryItem(item_id=r[0], name=r[1], quantity=r[2])
         for r in conn.execute("SELECT item_id, name, quantity FROM inventory")
     ]
+    skills = [
+        Skill.from_dict(json.loads(r[0]))
+        for r in conn.execute("SELECT data FROM skills ORDER BY sort_order")
+    ]
     player = Player(
         name=prow[0], location_id=prow[1], hp=prow[2], hp_max=prow[3],
         mana=prow[4], mana_max=prow[5], strength=prow[6], magic=prow[7],
         agility=prow[8], defense=prow[9], charisma=prow[10], perception=prow[11],
-        luck=prow[12], gold=prow[13], inventory=inventory,
+        luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

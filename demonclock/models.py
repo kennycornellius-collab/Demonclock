@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .skills import Skill
+
 # Reverse-direction table for the bidirectional link constructor (SPEC.md §3).
 OPPOSITE_DIRECTION = {
     "north": "south",
@@ -66,3 +68,4 @@ class Player:
     luck: int = 10
     gold: int = 0
     inventory: list[InventoryItem] = field(default_factory=list)
+    skills: list[Skill] = field(default_factory=list)

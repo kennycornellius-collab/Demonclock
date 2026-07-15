@@ -3,10 +3,11 @@ this module only adds behavior (inventory ops, defaults), never new fields."""
 from __future__ import annotations
 
 from .models import InventoryItem, Player
+from .skills import starter_skills
 
 
 def new_player(name: str, location_id: str) -> Player:
-    return Player(name=name, location_id=location_id)
+    return Player(name=name, location_id=location_id, skills=starter_skills())
 
 
 def add_item(player: Player, item_id: str, name: str, quantity: int = 1) -> None:

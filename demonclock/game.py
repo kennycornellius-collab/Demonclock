@@ -3,12 +3,13 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import db
+from . import combat, db
 from .actions import resolve
 from .clock import Clock
+from .enemies import make_enemy
 from .parser import parse
 from .player import new_player
-from .seed import new_default_world
+from .seed import WILD_ENEMY_BY_NODE, new_default_world
 from .state import GameState
 
 MENU = """
@@ -52,8 +53,28 @@ def handle_move(state: GameState) -> None:
 
 def handle_interact(state: GameState) -> None:
     # NPCs at a node would be listed here via a DB query, no AI (SPEC.md §6).
-    # None are seeded yet — content generation lands in a later part.
-    print("There is no one here to talk to yet.")
+    # A recurring wild foe on "dangerous" nodes is wired in for this combat
+    # stage (see seed.WILD_ENEMY_BY_NODE) — real NPCs/encounters are content
+    # generation, a later part.
+    enemy_id = WILD_ENEMY_BY_NODE.get(state.player.location_id)
+    if enemy_id is None:
+        print("There is no one here to talk to yet.")
+        return
+
+    enemy = make_enemy(enemy_id)
+    print(f"A {enemy.name} blocks your path! (HP {enemy.hp}/{enemy.hp_max})")
+    choice = input("1) Fight  2) Leave\n> ").strip()
+    if choice != "1":
+        return
+
+    def choose_action(fighter: combat.Combatant, foe: combat.Combatant) -> combat.CombatAction:
+        print(f"Your HP: {fighter.hp}/{fighter.hp_max}  |  {foe.name} HP: {foe.hp}/{foe.hp_max}")
+        sub_choice = input("1) Attack  2) Flee\n> ").strip()
+        return combat.CombatAction.FLEE if sub_choice == "2" else combat.CombatAction.ATTACK
+
+    _result, log = combat.run_combat(state.player, enemy, choose_action)
+    for line in log:
+        print(line)
 
 
 def handle_inventory(state: GameState) -> None:

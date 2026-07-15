@@ -9,6 +9,13 @@ from .world import World
 
 START_NODE_ID = "village"
 
+# Which recurring wild foe (see enemies.py) a "dangerous"-tagged node offers via
+# Interact -> Fight. A real encounter/spawn system is a later part (SPEC.md §12
+# steps 4-5); this is just enough to make combat playable now.
+WILD_ENEMY_BY_NODE: dict[str, str] = {
+    "wilds": "bramblewood_wolf",
+}
+
 
 def new_default_world() -> World:
     world = World()

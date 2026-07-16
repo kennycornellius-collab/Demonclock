@@ -1,8 +1,10 @@
 """The world-simulation tick engine (SPEC.md §12 step 2). Stage 1 built the
-generic scheduled-event machinery (timers); Stage 2 adds the demon-king
+generic scheduled-event machinery (timers); Stage 2 added the demon-king
 invasion (SPEC.md §3) as a self-rescheduling chain of `INVASION_SPREAD`
-events — no new plumbing needed, just a new `EventKind` and an `apply_event`
-branch. Stages 3-4 (price shifts, behavior decay) will add more the same way.
+events; Stage 3 adds price shifts (SPEC.md §4/§10) as a similar
+self-rescheduling `PRICE_SHIFT` chain that never stops (ongoing ambient
+pressure, unlike invasion's finite conquest) — delegating the actual price
+math to `economy.py`. Stage 4 (behavior decay) will add more the same way.
 `advance_time` stays the single choke point every elapsed-time call routes
 through.
 
@@ -14,12 +16,14 @@ structurally true and tested before the batch is real.
 """
 from __future__ import annotations
 
+from . import economy
 from .events import EventKind, ScheduledEvent
 from .state import GameState
 
-# Placeholder tuning constant — same status as combat.py's DOT_DURATION etc.
+# Placeholder tuning constants — same status as combat.py's DOT_DURATION etc.
 # (SPEC.md §11: start rough, calibrate by feel).
 INVASION_SPREAD_INTERVAL_DAYS = 5
+PRICE_SHIFT_INTERVAL_DAYS = 3
 
 
 def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
@@ -51,7 +55,23 @@ def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
     if event.kind is EventKind.INVASION_SPREAD:
         return _apply_invasion_spread(state, event)
 
+    if event.kind is EventKind.PRICE_SHIFT:
+        return _apply_price_shift(state)
+
     raise ValueError(f"unhandled event kind: {event.kind!r}")  # unreachable given EventKind's closed enum
+
+
+def _apply_price_shift(state: GameState) -> list[str]:
+    """Price volatility (SPEC.md §4/§10) — delegates the actual math to
+    economy.apply_price_shift, then unconditionally reschedules. Unlike
+    invasion, this chain never stops: price drift is an ongoing ambient
+    pressure source, not a one-time conquest with a natural end."""
+    log = economy.apply_price_shift(state)
+    state.world.schedule_event(ScheduledEvent(
+        due_day=state.clock.current_day + PRICE_SHIFT_INTERVAL_DAYS,
+        kind=EventKind.PRICE_SHIFT,
+    ))
+    return log
 
 
 def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]:

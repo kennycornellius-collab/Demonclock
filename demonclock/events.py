@@ -20,6 +20,7 @@ class EventKind(str, Enum):
     UNBLOCK_LINK = "unblock_link"
     SET_NODE_STATE = "set_node_state"
     INVASION_SPREAD = "invasion_spread"  # Stage 2 (SPEC.md §3) — see sim.apply_event
+    PRICE_SHIFT = "price_shift"  # Stage 3 (SPEC.md §4/§10) — see economy.apply_price_shift
 
 
 # Required payload keys per kind — validate_event's structural boundary.
@@ -28,6 +29,7 @@ _REQUIRED_PAYLOAD_KEYS: dict[EventKind, tuple[str, ...]] = {
     EventKind.UNBLOCK_LINK: ("from_id", "to_id"),
     EventKind.SET_NODE_STATE: ("node_id", "state"),
     EventKind.INVASION_SPREAD: (),  # derives everything from live world state at fire time
+    EventKind.PRICE_SHIFT: (),  # ditto
 }
 
 

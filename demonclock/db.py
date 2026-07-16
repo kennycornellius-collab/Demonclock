@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     type TEXT NOT NULL,
     state TEXT NOT NULL,
     tags TEXT NOT NULL,           -- JSON list
-    last_event_day INTEGER NOT NULL
+    last_event_day INTEGER NOT NULL,
+    prices TEXT NOT NULL DEFAULT '{}'  -- JSON dict: good_id -> current price
 );
 
 CREATE TABLE IF NOT EXISTS links (
@@ -105,9 +106,10 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
 
     for node in world.nodes.values():
         conn.execute(
-            "INSERT INTO nodes (id, name, type, state, tags, last_event_day) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (node.id, node.name, node.type, node.state, json.dumps(node.tags), node.last_event_day),
+            "INSERT INTO nodes (id, name, type, state, tags, last_event_day, prices) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (node.id, node.name, node.type, node.state, json.dumps(node.tags), node.last_event_day,
+             json.dumps(node.prices)),
         )
 
     for link in world.all_links():
@@ -189,10 +191,10 @@ def load_game(conn: sqlite3.Connection):
         return None
 
     world = World()
-    for row in conn.execute("SELECT id, name, type, state, tags, last_event_day FROM nodes"):
+    for row in conn.execute("SELECT id, name, type, state, tags, last_event_day, prices FROM nodes"):
         world.nodes[row[0]] = Node(
             id=row[0], name=row[1], type=row[2], state=row[3],
-            tags=json.loads(row[4]), last_event_day=row[5],
+            tags=json.loads(row[4]), last_event_day=row[5], prices=json.loads(row[6]),
         )
     for row in conn.execute(
         "SELECT from_id, to_id, direction, travel_days, status, block_reason, one_way FROM links"

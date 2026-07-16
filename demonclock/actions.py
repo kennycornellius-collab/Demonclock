@@ -68,7 +68,11 @@ def _resolve_look(state: GameState) -> Outcome:
         )
     else:
         exit_desc = "none"
-    return Outcome(f"{node.name} ({node.type}, {node.state}). Exits: {exit_desc}.")
+    message = f"{node.name} ({node.type}, {node.state}). Exits: {exit_desc}."
+    if node.prices:
+        price_desc = ", ".join(f"{good} {price}g" for good, price in node.prices.items())
+        message += f" Prices: {price_desc}."
+    return Outcome(message)
 
 
 def _resolve_inventory(state: GameState) -> Outcome:

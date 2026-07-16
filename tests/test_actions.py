@@ -55,6 +55,21 @@ def test_look_lists_open_exits():
     assert "east" in outcome.message
 
 
+def test_look_shows_prices_at_a_node_that_has_them():
+    state = make_state()
+    state.player.location_id = "market"
+
+    outcome = resolve(parse("look"), state)
+
+    assert "Prices:" in outcome.message
+    assert "grain 10g" in outcome.message
+
+
+def test_look_omits_prices_segment_where_none_are_tracked():
+    outcome = resolve(parse("look"), make_state())  # village has no tracked prices
+    assert "Prices:" not in outcome.message
+
+
 def test_unrecognized_action_is_not_ok():
     outcome = resolve(parse("xyzzy"), make_state())
     assert not outcome.ok

@@ -2,7 +2,13 @@ from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.models import Node
 from demonclock.player import new_player
-from demonclock.sim import INVASION_SPREAD_INTERVAL_DAYS, advance_time, apply_event, tick_day
+from demonclock.sim import (
+    INVASION_SPREAD_INTERVAL_DAYS,
+    PRICE_SHIFT_INTERVAL_DAYS,
+    advance_time,
+    apply_event,
+    tick_day,
+)
 from demonclock.state import GameState
 from demonclock.world import World
 
@@ -281,7 +287,50 @@ def test_seeded_invasion_conquers_the_whole_starter_graph_on_schedule():
     assert world.get_link("wilds", "road").block_reason == "enemy"  # invasion re-blocked it post-blizzard
     assert world.get_link("road", "village").status == "blocked"
     assert world.get_link("village", "market").status == "blocked"
-    assert world.scheduled_events == []  # blizzard pair + invasion chain all resolved
+    # blizzard pair + invasion chain fully resolved — only the perpetual
+    # PRICE_SHIFT chain (Stage 3) is still queued, which never stops
+    assert [e.kind for e in world.scheduled_events] == [EventKind.PRICE_SHIFT]
+
+
+# -- price shifts (Stage 3, SPEC.md §4/§10) --------------------------------
+
+def test_price_shift_reschedules_indefinitely_even_when_nothing_moved():
+    world = make_world("a")
+    state = make_state(world, day=0)
+
+    for _ in range(5):
+        event = ScheduledEvent(due_day=state.clock.current_day, kind=EventKind.PRICE_SHIFT)
+        apply_event(state, event)
+        # every fire schedules exactly one more, unlike invasion's finite stop
+        assert len(world.scheduled_events) == 1
+        next_event = world.scheduled_events.pop()
+        state.clock.current_day = next_event.due_day
+
+    assert next_event.kind is EventKind.PRICE_SHIFT
+    assert next_event.due_day == PRICE_SHIFT_INTERVAL_DAYS * 5
+
+
+def test_seeded_price_shift_tracks_the_invasion_approach():
+    from demonclock.seed import new_default_world
+
+    world = new_default_world()
+    state = make_state(world, day=0)
+
+    advance_time(state, 21)
+    assert world.nodes["market"].prices["grain"] == 11  # village fell day 20; first tick after is day 21
+
+    advance_time(state, 3)  # day 24
+    assert world.nodes["market"].prices["grain"] == 12
+
+    advance_time(state, 3)  # day 27 — market itself fell day 25, target is now x2.0
+    assert world.nodes["market"].prices["grain"] == 13
+
+    advance_time(state, 21)  # day 48 — reaches the x2.0 plateau
+    assert world.nodes["market"].prices["grain"] == 20
+
+    advance_time(state, 3)  # day 51 — holds, but still actively ticking
+    assert world.nodes["market"].prices["grain"] == 20
+    assert any(e.kind is EventKind.PRICE_SHIFT for e in world.scheduled_events)
 
 
 def test_blizzard_demo_blocks_then_reopens_the_pass():

@@ -114,6 +114,27 @@ def test_scheduled_events_round_trip(tmp_path):
     assert invasion_event.kind is EventKind.INVASION_SPREAD
     assert invasion_event.payload == {}
 
+    price_event = loaded_world.scheduled_events[3]
+    assert price_event.due_day == 3
+    assert price_event.kind is EventKind.PRICE_SHIFT
+    assert price_event.payload == {}
+
+    conn.close()
+
+
+def test_node_prices_round_trip(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()  # market is seeded with {"grain": 10}
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.nodes["market"].prices == {"grain": 10}
+    assert loaded_world.nodes["village"].prices == {}  # untouched nodes stay empty
+
     conn.close()
 
 

@@ -21,7 +21,10 @@ WILD_ENEMY_BY_NODE: dict[str, str] = {
 def new_default_world() -> World:
     world = World()
     world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub"]))
-    world.add_node(Node(id="market", name="Millhaven Market", type="market", tags=["trade-hub"]))
+    # Seeded with a tracked grain price (SPEC.md §12 step 2, Stage 3: price
+    # shifts) — the only trade-hub node with tracked prices this stage,
+    # keeping the demo to "one good at one node" (economy.BASE_PRICE).
+    world.add_node(Node(id="market", name="Millhaven Market", type="market", tags=["trade-hub"], prices={"grain": 10}))
     world.add_node(Node(id="road", name="Old North Road", type="road"))
     # Starts "occupied" — it borders demon-king territory (SPEC.md §12 step 2,
     # Stage 2: invasion-as-graph-spread). No bootstrap event needed for this;
@@ -62,5 +65,14 @@ def new_default_world() -> World:
     # reachable graph falls — on this 4-node line that's day 15 (road),
     # day 20 (village), day 25 (market), then it stops.
     world.schedule_event(ScheduledEvent(due_day=15, kind=EventKind.INVASION_SPREAD))
+
+    # Price volatility (SPEC.md §12 step 2, Stage 3) — an ongoing ambient
+    # pressure source (SPEC.md §4) that, unlike the invasion, never stops
+    # rescheduling. First attempt at day 3, before the blizzard, so it's
+    # background noise from early on. Grain at Millhaven Market holds steady
+    # until the invasion's approach (village falling day 20, market itself
+    # day 25) starts pushing its price up — SPEC.md §10's "grain prices
+    # spike (economy tell)" made real.
+    world.schedule_event(ScheduledEvent(due_day=3, kind=EventKind.PRICE_SHIFT))
 
     return world

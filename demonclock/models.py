@@ -31,6 +31,7 @@ class Node:
     state: str = "peaceful"
     tags: list[str] = field(default_factory=list)
     last_event_day: int = 0
+    prices: dict[str, int] = field(default_factory=dict)  # good_id -> current price (SPEC §4/§10)
 
 
 @dataclass

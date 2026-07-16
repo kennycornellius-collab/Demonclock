@@ -23,7 +23,11 @@ def new_default_world() -> World:
     world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub"]))
     world.add_node(Node(id="market", name="Millhaven Market", type="market", tags=["trade-hub"]))
     world.add_node(Node(id="road", name="Old North Road", type="road"))
-    world.add_node(Node(id="wilds", name="Bramblewood Wilds", type="wilds", tags=["dangerous"]))
+    # Starts "occupied" — it borders demon-king territory (SPEC.md §12 step 2,
+    # Stage 2: invasion-as-graph-spread). No bootstrap event needed for this;
+    # the OBSERVABLE spread (other nodes falling, links cutting off) still
+    # only happens later, on the invasion's own timer below.
+    world.add_node(Node(id="wilds", name="Bramblewood Wilds", type="wilds", tags=["dangerous"], state="occupied"))
 
     world.add_link("village", "market", "east", travel_days=1)
     world.add_link("village", "road", "north", travel_days=1)
@@ -48,5 +52,15 @@ def new_default_world() -> World:
         payload={"from_id": "road", "to_id": "wilds"},
         description="The blizzard clears; the northern pass is open again.",
     ))
+
+    # The demon-king invasion (SPEC.md §12 step 2, Stage 2) — an ambient
+    # pressure source (SPEC.md §4) ticking regardless of what the player
+    # does. First attempt at day 15, comfortably after the blizzard above
+    # fully resolves (day 9), so their shared road<->wilds link isn't fought
+    # over by two systems in the same window. sim._apply_invasion_spread
+    # reschedules itself every INVASION_SPREAD_INTERVAL_DAYS until the whole
+    # reachable graph falls — on this 4-node line that's day 15 (road),
+    # day 20 (village), day 25 (market), then it stops.
+    world.schedule_event(ScheduledEvent(due_day=15, kind=EventKind.INVASION_SPREAD))
 
     return world

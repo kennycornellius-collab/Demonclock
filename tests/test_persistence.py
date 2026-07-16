@@ -109,6 +109,11 @@ def test_scheduled_events_round_trip(tmp_path):
     assert loaded_world.scheduled_events[0].kind is EventKind.BLOCK_LINK
     assert loaded_world.scheduled_events[0].payload == {"from_id": "road", "to_id": "wilds", "reason": "snow"}
 
+    invasion_event = loaded_world.scheduled_events[2]
+    assert invasion_event.due_day == 15
+    assert invasion_event.kind is EventKind.INVASION_SPREAD
+    assert invasion_event.payload == {}
+
     conn.close()
 
 

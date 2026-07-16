@@ -2,7 +2,7 @@ from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.models import Node
 from demonclock.player import new_player
-from demonclock.sim import advance_time, apply_event, tick_day
+from demonclock.sim import INVASION_SPREAD_INTERVAL_DAYS, advance_time, apply_event, tick_day
 from demonclock.state import GameState
 from demonclock.world import World
 
@@ -176,6 +176,112 @@ def test_advance_time_calls_the_batch_placeholder_exactly_once(monkeypatch):
     advance_time(state, 12)  # a 12-day journey: 12 ticks, exactly 1 batch (SPEC.md §4/§13)
 
     assert len(calls) == 1
+
+
+def make_linear_world(occupied_id: str = "a") -> World:
+    """a - b - c, all links open; `occupied_id` starts occupied, the rest peaceful."""
+    world = make_world("a", "b", "c")
+    world.add_link("a", "b", "north", travel_days=1)
+    world.add_link("b", "c", "north", travel_days=1)
+    world.nodes[occupied_id].state = "occupied"
+    return world
+
+
+# -- invasion spread (Stage 2, SPEC.md §3) ---------------------------------
+
+def test_invasion_spread_occupies_open_frontier_and_blocks_crossed_link():
+    world = make_linear_world()
+    state = make_state(world, day=0)
+    event = ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD)
+
+    log = apply_event(state, event)
+
+    assert world.nodes["b"].state == "occupied"
+    assert world.nodes["c"].state == "peaceful"  # not yet reached — one hop per tick
+    assert world.get_link("a", "b").status == "blocked"
+    assert world.get_link("a", "b").block_reason == "enemy"
+    assert world.get_link("b", "a").status == "blocked"
+    assert world.get_link("b", "c").status == "open"  # not crossed yet
+    assert any("overruns" in line for line in log)
+
+
+def test_invasion_spread_reschedules_next_tick_when_nodes_remain():
+    world = make_linear_world()
+    state = make_state(world, day=0)
+
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert len(world.scheduled_events) == 1
+    next_event = world.scheduled_events[0]
+    assert next_event.kind is EventKind.INVASION_SPREAD
+    assert next_event.due_day == INVASION_SPREAD_INTERVAL_DAYS
+
+
+def test_invasion_spread_stalls_behind_a_blockage_but_still_reschedules():
+    world = make_linear_world()
+    world.block_link("a", "b", reason="flood")
+    state = make_state(world, day=0)
+
+    log = apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert log == []
+    assert world.nodes["b"].state == "peaceful"
+    # Stalled, not given up — SPEC.md §4 frames this as an ambient pressure
+    # source, so a temporary blockage must not permanently cancel the chain.
+    assert len(world.scheduled_events) == 1
+    assert world.scheduled_events[0].kind is EventKind.INVASION_SPREAD
+
+
+def test_invasion_spread_resumes_once_the_blockage_clears():
+    world = make_linear_world()
+    world.block_link("a", "b", reason="flood")
+    state = make_state(world, day=0)
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))  # stalls, reschedules for day 5
+    retry_day = world.scheduled_events[0].due_day
+
+    world.unblock_link("a", "b")
+    state.clock.current_day = retry_day
+    log = tick_day(state)
+
+    assert world.nodes["b"].state == "occupied"
+    assert log
+
+
+def test_invasion_spread_stops_rescheduling_once_the_whole_graph_falls():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    world.nodes["a"].state = "occupied"
+    state = make_state(world, day=0)
+
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert world.nodes["b"].state == "occupied"
+    assert world.scheduled_events == []  # nothing left to conquer, chain ends
+
+
+def test_invasion_spread_is_deterministic():
+    def make_matchup():
+        return make_state(make_linear_world(), day=0)
+
+    log1 = advance_time(make_matchup(), 20)
+    log2 = advance_time(make_matchup(), 20)
+
+    assert log1 == log2
+
+
+def test_seeded_invasion_conquers_the_whole_starter_graph_on_schedule():
+    from demonclock.seed import new_default_world
+
+    world = new_default_world()
+    state = make_state(world, day=0)
+
+    advance_time(state, 26)  # past day 25, the last scheduled conquest
+
+    assert all(node.state == "occupied" for node in world.nodes.values())
+    assert world.get_link("wilds", "road").block_reason == "enemy"  # invasion re-blocked it post-blizzard
+    assert world.get_link("road", "village").status == "blocked"
+    assert world.get_link("village", "market").status == "blocked"
+    assert world.scheduled_events == []  # blizzard pair + invasion chain all resolved
 
 
 def test_blizzard_demo_blocks_then_reopens_the_pass():

@@ -1,6 +1,8 @@
-"""The world-simulation tick engine (SPEC.md §12 step 2, first of four
-stages: timers & scheduled events). Grows across stages 2-4 (invasion spread,
-price shifts, behavior-profile decay) as more per-day tick steps, but
+"""The world-simulation tick engine (SPEC.md §12 step 2). Stage 1 built the
+generic scheduled-event machinery (timers); Stage 2 adds the demon-king
+invasion (SPEC.md §3) as a self-rescheduling chain of `INVASION_SPREAD`
+events — no new plumbing needed, just a new `EventKind` and an `apply_event`
+branch. Stages 3-4 (price shifts, behavior decay) will add more the same way.
 `advance_time` stays the single choke point every elapsed-time call routes
 through.
 
@@ -14,6 +16,10 @@ from __future__ import annotations
 
 from .events import EventKind, ScheduledEvent
 from .state import GameState
+
+# Placeholder tuning constant — same status as combat.py's DOT_DURATION etc.
+# (SPEC.md §11: start rough, calibrate by feel).
+INVASION_SPREAD_INTERVAL_DAYS = 5
 
 
 def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
@@ -42,7 +48,58 @@ def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
         node.state = payload["state"]
         return [event.description or f"{node.name} is now {payload['state']}."]
 
+    if event.kind is EventKind.INVASION_SPREAD:
+        return _apply_invasion_spread(state, event)
+
     raise ValueError(f"unhandled event kind: {event.kind!r}")  # unreachable given EventKind's closed enum
+
+
+def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]:
+    """The demon-king invasion (SPEC.md §3): a self-rescheduling chain of
+    INVASION_SPREAD events. Each fire occupies every node reachable via an
+    OPEN link from currently-occupied territory (an army stalls behind a
+    blockage the same as a traveler or rumor would — SPEC.md §10's "blocked
+    links stop rumor flow" logic applies here too) and cuts the links it
+    crosses. Node-occupation and link-blocking are done via recursive
+    `apply_event` calls on synthetic sub-events, reusing SET_NODE_STATE/
+    BLOCK_LINK rather than a second "mutate world state" code path."""
+    world = state.world
+    occupied_ids = {n.id for n in world.nodes.values() if n.state == "occupied"}
+    frontier_ids = sorted({
+        link.to_id
+        for node_id in occupied_ids
+        for link in world.open_links_from(node_id)
+        if link.to_id not in occupied_ids
+    })
+
+    log: list[str] = []
+    for node_id in frontier_ids:
+        node = world.nodes[node_id]
+        log.extend(apply_event(state, ScheduledEvent(
+            due_day=event.due_day, kind=EventKind.SET_NODE_STATE,
+            payload={"node_id": node_id, "state": "occupied"},
+            description=f"The invasion overruns {node.name}.",
+        )))
+    for node_id in frontier_ids:
+        for link in world.links_from(node_id):
+            if link.status == "open" and world.nodes[link.to_id].state == "occupied":
+                log.extend(apply_event(state, ScheduledEvent(
+                    due_day=event.due_day, kind=EventKind.BLOCK_LINK,
+                    payload={"from_id": node_id, "to_id": link.to_id, "reason": "enemy"},
+                )))
+
+    # Reschedule unless the whole graph has fallen — deliberately NOT
+    # conditioned on "did this tick make progress": a tick stalled behind an
+    # unrelated temporary blockage (e.g. a blizzard) must still retry next
+    # interval, or the invasion would permanently give up the first time
+    # it's inconvenienced, contradicting its role as an ambient pressure
+    # source (SPEC.md §4) rather than a one-shot event.
+    if any(node.state != "occupied" for node in world.nodes.values()):
+        world.schedule_event(ScheduledEvent(
+            due_day=state.clock.current_day + INVASION_SPREAD_INTERVAL_DAYS,
+            kind=EventKind.INVASION_SPREAD,
+        ))
+    return log
 
 
 def tick_day(state: GameState) -> list[str]:

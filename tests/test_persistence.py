@@ -1,5 +1,6 @@
 from demonclock import db
 from demonclock.clock import Clock
+from demonclock.events import EventKind, ScheduledEvent
 from demonclock.player import add_item, new_player
 from demonclock.seed import new_default_world
 from demonclock.skills import Effect, EffectKind, Skill, StatType
@@ -88,6 +89,40 @@ def test_creative_mode_used_defaults_false(tmp_path):
 
     _, loaded_player, _ = db.load_game(conn)
     assert loaded_player.creative_mode_used is False
+
+    conn.close()
+
+
+def test_scheduled_events_round_trip(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()  # already carries the seeded blizzard pair
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert [e.description for e in loaded_world.scheduled_events] == \
+        [e.description for e in world.scheduled_events]
+    assert loaded_world.scheduled_events[0].due_day == 4
+    assert loaded_world.scheduled_events[0].kind is EventKind.BLOCK_LINK
+    assert loaded_world.scheduled_events[0].payload == {"from_id": "road", "to_id": "wilds", "reason": "snow"}
+
+    conn.close()
+
+
+def test_scheduled_events_save_is_a_full_overwrite(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+    db.save_game(conn, world, player, Clock())  # save twice
+
+    loaded_world, _, _ = db.load_game(conn)
+    assert len(loaded_world.scheduled_events) == len(world.scheduled_events)
 
     conn.close()
 

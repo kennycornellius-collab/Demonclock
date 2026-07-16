@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import sim
 from .parser import Action, ActionType
 from .state import GameState
 
@@ -47,12 +48,15 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
         return Outcome(f"The way {direction} is blocked ({reason}).", ok=False)
 
     state.player.location_id = link.to_id
-    state.clock.advance(link.travel_days)
+    tick_log = sim.advance_time(state, link.travel_days)
     node = state.world.nodes[link.to_id]
-    return Outcome(
+    message = (
         f"You travel {direction} to {node.name} ({link.travel_days} day(s) pass, "
         f"now day {state.clock.current_day})."
     )
+    if tick_log:
+        message += "\n" + "\n".join(tick_log)
+    return Outcome(message)
 
 
 def _resolve_look(state: GameState) -> Outcome:
@@ -76,11 +80,14 @@ def _resolve_inventory(state: GameState) -> Outcome:
 
 
 def _resolve_rest(state: GameState) -> Outcome:
-    state.clock.advance(1)
+    tick_log = sim.advance_time(state, 1)
     player = state.player
     player.hp = min(player.hp_max, player.hp + player.hp_max // 4)
     player.mana = min(player.mana_max, player.mana + player.mana_max // 4)
-    return Outcome(
+    message = (
         f"You rest. A day passes (day {state.clock.current_day}). "
         f"HP {player.hp}/{player.hp_max}, MANA {player.mana}/{player.mana_max}."
     )
+    if tick_log:
+        message += "\n" + "\n".join(tick_log)
+    return Outcome(message)

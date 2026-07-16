@@ -61,6 +61,11 @@ CREATE TABLE IF NOT EXISTS skills (
                          -- the universal BASIC_ATTACK is never persisted)
 );
 
+CREATE TABLE IF NOT EXISTS scheduled_events (
+    sort_order INTEGER NOT NULL,
+    data TEXT NOT NULL   -- JSON-encoded ScheduledEvent.to_dict()
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -96,6 +101,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM player")
     conn.execute("DELETE FROM inventory")
     conn.execute("DELETE FROM skills")
+    conn.execute("DELETE FROM scheduled_events")
 
     for node in world.nodes.values():
         conn.execute(
@@ -151,6 +157,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO skills (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(skill.to_dict())),
         )
+    for sort_order, event in enumerate(world.scheduled_events):
+        conn.execute(
+            "INSERT INTO scheduled_events (sort_order, data) VALUES (?, ?)",
+            (sort_order, json.dumps(event.to_dict())),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -169,6 +180,7 @@ def load_game(conn: sqlite3.Connection):
     """Returns (World, Player, Clock) rebuilt from the save file, or None if
     no save exists yet."""
     from .clock import Clock
+    from .events import ScheduledEvent
     from .models import InventoryItem, Link, Node, Player
     from .skills import Skill
     from .world import World
@@ -190,6 +202,10 @@ def load_game(conn: sqlite3.Connection):
             status=row[4], block_reason=row[5], one_way=bool(row[6]),
         )
         world.links.setdefault(link.from_id, []).append(link)
+    world.scheduled_events = [
+        ScheduledEvent.from_dict(json.loads(r[0]))
+        for r in conn.execute("SELECT data FROM scheduled_events ORDER BY sort_order")
+    ]
 
     prow = conn.execute(
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "

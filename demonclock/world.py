@@ -9,6 +9,7 @@ from __future__ import annotations
 import heapq
 from dataclasses import dataclass
 
+from .events import ScheduledEvent
 from .models import OPPOSITE_DIRECTION, Link, Node
 
 
@@ -26,6 +27,7 @@ class World:
     def __init__(self) -> None:
         self.nodes: dict[str, Node] = {}
         self.links: dict[str, list[Link]] = {}  # from_id -> outgoing Links
+        self.scheduled_events: list[ScheduledEvent] = []  # SPEC.md §3/§12 step 2
 
     # -- construction --------------------------------------------------
 
@@ -65,6 +67,14 @@ class World:
             self.links.setdefault(to_id, []).append(reverse)
 
         return forward
+
+    def schedule_event(self, event: ScheduledEvent) -> ScheduledEvent:
+        """The one insertion point for queuing a scheduled event — later
+        world-simulation stages (invasion, price shifts) schedule through
+        here too, same rationale as add_link being the one place a link gets
+        created."""
+        self.scheduled_events.append(event)
+        return event
 
     # -- queries ---------------------------------------------------------
 

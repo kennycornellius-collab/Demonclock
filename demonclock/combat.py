@@ -1,8 +1,7 @@
-"""Turn-based combat (SPEC.md §6b) — now skill-based (Stage 2 of the combat
-build). Stage 1 had a single hardcoded basic attack; skills.py's enumerated
-`effects` vocabulary now drives what a turn actually does. The fair-cost
-calculator and `creative_mode_used` flag are Stage 3; see CLAUDE.md "Build
-progress".
+"""Turn-based combat (SPEC.md §6b) — skill-based since Stage 2, with Stage 3's
+fair-cost check wired in: the moment the player CASTS a learned skill whose
+actual cost undercuts `skills.compute_fair_cost` on any dimension, this sets
+`Player.creative_mode_used` (never at authoring time — see skills.py).
 
 Deterministic on purpose, still: no damage variance, no dodge, no crit. RNG
 is planned for a later combat stage — see SPEC.md §6b's forward-note.
@@ -20,7 +19,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .models import Player
-from .skills import BASIC_ATTACK, Effect, EffectKind, INERT_EFFECTS, Skill, StatType
+from .skills import (
+    BASIC_ATTACK,
+    Effect,
+    EffectKind,
+    INERT_EFFECTS,
+    Skill,
+    StatType,
+    compute_fair_cost,
+    compute_magnitude,
+    is_underpriced,
+)
 
 # Placeholder tuning constants — same status as the fair-cost curve (SPEC.md
 # §11: "start rough, calibrate by feel").
@@ -104,7 +113,7 @@ def _magnitude(caster: Combatant, skill: Skill) -> int:
     """SPEC.md §6b damage formula, generalized: every effect on a skill draws
     from the same power budget rather than each having its own tunable
     number — keeps the schema close to what SPEC.md §6b actually specifies."""
-    return int(skill.base_damage * skill.attribute_multiplier) + effective_stat(caster, skill.attribute_type)
+    return compute_magnitude(skill.base_damage, skill.attribute_multiplier, effective_stat(caster, skill.attribute_type))
 
 
 def _deal_damage(caster: Combatant, target: Combatant, magnitude: int, skill: Skill, log: list[str]) -> int:
@@ -263,6 +272,10 @@ def run_combat(
                     player.mana = fighter.mana
                     log.append(f"You flee from the {enemy.name}.")
                     return CombatResult.FLED, log
+                if skill is not BASIC_ATTACK:
+                    fair = compute_fair_cost(skill.effects, _magnitude(fighter, skill))
+                    if is_underpriced(skill, fair):
+                        player.creative_mode_used = True
             else:
                 skill = BASIC_ATTACK
 

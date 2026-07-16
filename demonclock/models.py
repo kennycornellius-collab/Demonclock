@@ -69,3 +69,6 @@ class Player:
     gold: int = 0
     inventory: list[InventoryItem] = field(default_factory=list)
     skills: list[Skill] = field(default_factory=list)
+    # Set the moment a rule-breaking (fair-cost-undercutting) skill is CAST,
+    # not when it's created (SPEC.md §6b) — see combat.run_combat.
+    creative_mode_used: bool = False

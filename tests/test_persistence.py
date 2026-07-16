@@ -65,6 +65,33 @@ def test_save_then_load_round_trips_world_player_clock(tmp_path):
     conn.close()
 
 
+def test_creative_mode_used_flag_persists(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    player.creative_mode_used = True
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+    assert loaded_player.creative_mode_used is True
+
+    conn.close()
+
+
+def test_creative_mode_used_defaults_false(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+    assert loaded_player.creative_mode_used is False
+
+    conn.close()
+
+
 def test_starter_skills_persist_in_order(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

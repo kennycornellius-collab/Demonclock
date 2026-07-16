@@ -1,7 +1,21 @@
 import pytest
 
 from demonclock.combat import Combatant, StatModifier, apply_skill, effective_stat, tick_upkeep, usable_skills
-from demonclock.skills import BASIC_ATTACK, Effect, EffectKind, Skill, SkillError, StatType, starter_skills, validate_skill
+from demonclock.skills import (
+    BASIC_ATTACK,
+    Effect,
+    EffectKind,
+    FairCost,
+    Skill,
+    SkillError,
+    StatType,
+    compute_fair_cost,
+    compute_magnitude,
+    generate_skill_id,
+    is_underpriced,
+    starter_skills,
+    validate_skill,
+)
 
 
 def make_combatant(**kwargs) -> Combatant:
@@ -236,3 +250,48 @@ def test_cooldown_clears_after_enough_upkeep_ticks():
     combatant = make_combatant(cooldowns={"onslot": 1})
     tick_upkeep(combatant, [])
     assert "onslot" not in combatant.cooldowns
+
+
+# -- fair-cost calculator (Stage 3, SPEC.md §6b) --------------------------
+
+def test_compute_magnitude_matches_spec_formula():
+    # base 100, mult 1.5, stat 10 -> (100*1.5)+10 = 160, SPEC.md §6b's example
+    assert compute_magnitude(base_damage=100, attribute_multiplier=1.5, stat_value=10) == 160
+
+
+def test_compute_fair_cost_matches_the_formula_for_a_single_effect():
+    fair = compute_fair_cost([Effect(EffectKind.DAMAGE)], magnitude=20)
+    assert fair == FairCost(mana_cost=7, cooldown=1, cast_time=0)
+
+
+def test_compute_fair_cost_is_free_with_no_effects():
+    fair = compute_fair_cost([], magnitude=999)
+    assert fair == FairCost(mana_cost=0, cooldown=0, cast_time=0)
+
+
+def test_compute_fair_cost_rises_with_more_composed_effects():
+    single = compute_fair_cost([Effect(EffectKind.DAMAGE)], magnitude=50)
+    stacked = compute_fair_cost([Effect(EffectKind.DAMAGE), Effect(EffectKind.DOT)], magnitude=50)
+    assert stacked.mana_cost > single.mana_cost
+
+
+def test_is_underpriced_true_when_any_dimension_undercuts_fair():
+    fair = FairCost(mana_cost=10, cooldown=2, cast_time=1)
+    assert is_underpriced(make_skill(mana_cost=0), fair) is True
+    assert is_underpriced(make_skill(mana_cost=10, cooldown=0), fair) is True
+    assert is_underpriced(make_skill(mana_cost=10, cooldown=2, cast_time=0), fair) is True
+
+
+def test_is_underpriced_false_when_cost_meets_or_exceeds_fair_on_every_dimension():
+    fair = FairCost(mana_cost=10, cooldown=2, cast_time=1)
+    skill = make_skill(mana_cost=10, cooldown=2, cast_time=1)
+    assert is_underpriced(skill, fair) is False
+
+
+def test_generate_skill_id_slugifies_the_name():
+    assert generate_skill_id("Fire Bolt!", existing_ids=set()) == "fire_bolt"
+
+
+def test_generate_skill_id_dedupes_collisions():
+    assert generate_skill_id("Firebolt", existing_ids={"firebolt"}) == "firebolt_2"
+    assert generate_skill_id("Firebolt", existing_ids={"firebolt", "firebolt_2"}) == "firebolt_3"

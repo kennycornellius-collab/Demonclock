@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS player (
     charisma INTEGER NOT NULL,
     perception INTEGER NOT NULL,
     luck INTEGER NOT NULL,
-    gold INTEGER NOT NULL
+    gold INTEGER NOT NULL,
+    creative_mode_used INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -120,8 +121,8 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
 
     conn.execute(
         "INSERT INTO player (id, name, location_id, hp, hp_max, mana, mana_max, "
-        "strength, magic, agility, defense, charisma, perception, luck, gold) "
-        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "strength, magic, agility, defense, charisma, perception, luck, gold, "
+        "creative_mode_used) VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -137,6 +138,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             player.perception,
             player.luck,
             player.gold,
+            int(player.creative_mode_used),
         ),
     )
     for item in player.inventory:
@@ -191,7 +193,8 @@ def load_game(conn: sqlite3.Connection):
 
     prow = conn.execute(
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
-        "agility, defense, charisma, perception, luck, gold FROM player WHERE id = 0"
+        "agility, defense, charisma, perception, luck, gold, creative_mode_used "
+        "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
         InventoryItem(item_id=r[0], name=r[1], quantity=r[2])
@@ -206,6 +209,7 @@ def load_game(conn: sqlite3.Connection):
         mana=prow[4], mana_max=prow[5], strength=prow[6], magic=prow[7],
         agility=prow[8], defense=prow[9], charisma=prow[10], perception=prow[11],
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
+        creative_mode_used=bool(prow[14]),
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

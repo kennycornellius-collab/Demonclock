@@ -10,13 +10,16 @@ from existing; a 0-mana huge-damage skill is legal, an intentional opt-out.
 `validate_skill` only guards the enum boundary itself (a BUFF/DEBUFF must name
 a real stat) — a structural requirement, not a balance judgement.
 
-The runtime skill-AUTHORING UI, the fair-cost calculator, and the
-`creative_mode_used` flag are Stage 3 (see CLAUDE.md "Build progress").
-`Skill.computed_fair_cost` exists as a field now so persistence doesn't need
-to change shape when Stage 3 fills it in.
+`compute_fair_cost` is the Stage 3 fair-cost calculator: it turns a skill's
+power dials (magnitude + composed effects) into an engine-suggested MANA/
+cooldown/cast-time. Accepting it keeps a skill balanced; undercutting it on
+any dimension (`is_underpriced`) is the deliberate "cost-zeroing act" that
+opts a save into creative mode when the skill is actually cast (see
+`combat.run_combat`) — never a rejection, since creation stays unblocked.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -78,7 +81,7 @@ class Skill:
     attribute_multiplier: float = 1.0
     cooldown: int = 0
     cast_time: int = 0  # multi-turn casting — a stored field, inert this stage
-    computed_fair_cost: int = 0  # filled in by Stage 3's fair-cost calculator
+    computed_fair_cost: int = 0  # the fair MANA cost at authoring time (see compute_fair_cost)
 
     def to_dict(self) -> dict:
         return {
@@ -114,6 +117,90 @@ class Skill:
 
 class SkillError(ValueError):
     pass
+
+
+def compute_magnitude(base_damage: int, attribute_multiplier: float, stat_value: int) -> int:
+    """SPEC.md §6b damage formula: `(base_damage * attribute_multiplier) +
+    attribute_value`. Single source of truth for "how strong is this skill" —
+    both `combat.apply_skill`'s live casts and the fair-cost calculator below
+    derive a skill's power from this one formula, so they can never drift."""
+    return int(base_damage * attribute_multiplier) + stat_value
+
+
+# Relative "how strong is this effect" weights feeding the fair-cost formula.
+# Placeholder numbers — same status as combat.py's DOT_DURATION/STUN_DURATION/
+# etc: start rough, calibrate by feel (SPEC.md §11). Control/utility effects
+# (STUN, CLEANSE) don't actually scale with magnitude in combat.py today (a
+# stun is a fixed duration regardless of power) — they're still priced off
+# magnitude here because a caster's own stat already sets a magnitude floor,
+# and a flat per-effect price would let a 0-power skill make them free.
+EFFECT_POWER_WEIGHT: dict[EffectKind, float] = {
+    EffectKind.DAMAGE: 1.0,
+    EffectKind.HEAL: 1.0,
+    EffectKind.LIFESTEAL: 0.5,
+    EffectKind.SHIELD: 1.0,
+    EffectKind.STUN: 1.2,
+    EffectKind.DOT: 0.8,
+    EffectKind.BUFF: 0.7,
+    EffectKind.DEBUFF: 0.7,
+    EffectKind.CLEANSE: 0.4,
+    EffectKind.AOE: 0.3,
+    EffectKind.KNOCKBACK: 0.2,
+    EffectKind.TAUNT: 0.2,
+}
+
+MANA_PER_POWER = 0.35
+COOLDOWN_PER_POWER = 0.05
+CAST_TIME_PER_POWER = 0.02
+
+
+@dataclass
+class FairCost:
+    mana_cost: int
+    cooldown: int
+    cast_time: int
+
+
+def compute_fair_cost(effects: list[Effect], magnitude: int) -> FairCost:
+    """The Stage 3 fair-cost calculator (SPEC.md §6b): turns a skill's power
+    (its effects composed + how hard they'll hit, per `compute_magnitude`)
+    into an engine-suggested MANA/cooldown/cast-time. A skill with no effects
+    does nothing, so it's fairly free. This never blocks anything — it's a
+    suggestion the authoring flow shows the player, who may accept it or
+    undercut it (see `is_underpriced`)."""
+    power = magnitude * sum(EFFECT_POWER_WEIGHT[effect.kind] for effect in effects)
+    return FairCost(
+        mana_cost=max(0, round(power * MANA_PER_POWER)),
+        cooldown=max(0, round(power * COOLDOWN_PER_POWER)),
+        cast_time=max(0, round(power * CAST_TIME_PER_POWER)),
+    )
+
+
+def is_underpriced(skill: Skill, fair: FairCost) -> bool:
+    """True if `skill`'s actual cost undercuts the engine's fair suggestion on
+    any dimension — the deliberate "cost-zeroing act" SPEC.md §6b treats as
+    the opt-out gesture into creative mode. Never a rejection: creation stays
+    unblocked regardless of what this returns (see `combat.run_combat` for
+    where this actually flips `Player.creative_mode_used`, at CAST time, not
+    creation time)."""
+    return (
+        skill.mana_cost < fair.mana_cost
+        or skill.cooldown < fair.cooldown
+        or skill.cast_time < fair.cast_time
+    )
+
+
+def generate_skill_id(name: str, existing_ids: set[str]) -> str:
+    """Slugifies `name` into a unique skill id, deduping against
+    `existing_ids` (the caller passes the player's current skill ids plus the
+    reserved `"basic_attack"` id)."""
+    base = re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_") or "skill"
+    candidate = base
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
 
 
 def validate_skill(skill: Skill) -> None:

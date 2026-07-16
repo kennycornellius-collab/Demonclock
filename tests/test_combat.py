@@ -115,6 +115,61 @@ def test_run_combat_is_deterministic():
     assert log1 == log2
 
 
+def test_casting_an_underpriced_skill_sets_creative_mode_used():
+    # Huge power at 0 mana/cooldown/cast_time — the explicit cost-zeroing act
+    # SPEC.md §6b treats as the deliberate opt-out gesture.
+    godmode = Skill(
+        id="godmode",
+        name="One-Shot Everything",
+        effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH,
+        base_damage=99999,
+        attribute_multiplier=1.0,
+        mana_cost=0,
+        cooldown=0,
+        cast_time=0,
+    )
+    player = make_player(strength=1, defense=0, agility=100, hp=100, hp_max=100, skills=[godmode])
+    enemy = make_combatant(name="Target", hp=10, hp_max=10, defense=0, agility=1)
+
+    run_combat(player, enemy, choose_action=lambda *_: godmode)
+
+    assert player.creative_mode_used is True
+
+
+def test_casting_a_fairly_priced_learned_skill_leaves_creative_mode_used_false():
+    firebolt = Skill(
+        id="firebolt_fair",
+        name="Firebolt",
+        effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.MAGIC,
+        base_damage=15,
+        attribute_multiplier=1.2,
+        mana_cost=50,   # deliberately generous, at or above any plausible fair cost
+        cooldown=5,
+        cast_time=5,
+    )
+    player = make_player(magic=10, defense=0, agility=100, hp=100, hp_max=100, mana=50, mana_max=50, skills=[firebolt])
+    enemy = make_combatant(name="Target", hp=1000, hp_max=1000, defense=0, agility=1)
+
+    run_combat(player, enemy, choose_action=lambda *_: None)  # flee immediately, no cast
+    assert player.creative_mode_used is False
+
+    player.mana = 50
+    run_combat(player, enemy, choose_action=lambda fighter, _e, usable: firebolt if firebolt in usable else None)
+
+    assert player.creative_mode_used is False
+
+
+def test_basic_attack_never_sets_creative_mode_used():
+    player = make_player(strength=1, defense=0, agility=100, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert player.creative_mode_used is False
+
+
 def test_run_combat_casts_a_learned_skill_and_deducts_mana():
     firebolt = Skill(
         id="firebolt_test",

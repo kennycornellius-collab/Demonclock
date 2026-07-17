@@ -101,6 +101,17 @@ def test_move_across_the_seeded_blizzard_blocks_the_pass():
     assert outcome.ok
 
 
+def test_move_records_the_destination_in_recent_locations():
+    state = make_state()
+    resolve(parse("go east"), state)
+    assert state.player.behavior.recent_locations == ["market"]
+
+
+def test_inventory_shows_a_derived_role_hint():
+    outcome = resolve(parse("inventory"), make_state())
+    assert "You seem: still finding their way." in outcome.message
+
+
 def test_combat_does_not_tick_the_sim():
     state = make_state()
     events_before = len(state.world.scheduled_events)

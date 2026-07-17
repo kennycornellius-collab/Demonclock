@@ -4,9 +4,12 @@ invasion (SPEC.md §3) as a self-rescheduling chain of `INVASION_SPREAD`
 events; Stage 3 adds price shifts (SPEC.md §4/§10) as a similar
 self-rescheduling `PRICE_SHIFT` chain that never stops (ongoing ambient
 pressure, unlike invasion's finite conquest) — delegating the actual price
-math to `economy.py`. Stage 4 (behavior decay) will add more the same way.
-`advance_time` stays the single choke point every elapsed-time call routes
-through.
+math to `economy.py`. Stage 4 adds `BehaviorProfile` decay (SPEC.md §5): unlike
+the other three systems it isn't a `ScheduledEvent` at all — it's an ambient,
+every-elapsed-day tick (`behavior.tick`) called directly from the loop below,
+since it has no due-day/reschedule semantics of its own to route through
+`apply_event`. `advance_time` stays the single choke point every elapsed-time
+call routes through.
 
 Zero AI here — pure code (SPEC.md §2's "golden rule": most turns cost zero AI
 calls; the daytime engine tick is one of the free ones). `_run_batch` is a
@@ -16,7 +19,7 @@ structurally true and tested before the batch is real.
 """
 from __future__ import annotations
 
-from . import economy
+from . import behavior, economy
 from .events import EventKind, ScheduledEvent
 from .state import GameState
 
@@ -159,6 +162,7 @@ def advance_time(state: GameState, days: int) -> list[str]:
     log: list[str] = []
     for _ in range(days):
         state.clock.advance(1)
+        behavior.tick(state.player.behavior, state.player.gold)
         log.extend(tick_day(state))
     _run_batch(state)
     return log

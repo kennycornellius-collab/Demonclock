@@ -1,3 +1,5 @@
+import pytest
+
 from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.models import Node
@@ -331,6 +333,36 @@ def test_seeded_price_shift_tracks_the_invasion_approach():
     advance_time(state, 3)  # day 51 — holds, but still actively ticking
     assert world.nodes["market"].prices["grain"] == 20
     assert any(e.kind is EventKind.PRICE_SHIFT for e in world.scheduled_events)
+
+
+# -- behavior-profile decay (Stage 4, SPEC.md §5) --------------------------
+
+def test_advance_time_decays_behavior_counters_once_per_elapsed_day():
+    state = make_state(day=0)
+    state.player.behavior.combat_actions = 10.0
+
+    advance_time(state, 3)
+
+    assert state.player.behavior.combat_actions == pytest.approx(10.0 * (0.97 ** 3))
+
+
+def test_advance_time_refreshes_gold_trend_from_player_gold():
+    state = make_state(day=0)
+    state.player.gold = 50
+
+    advance_time(state, 1)
+
+    assert state.player.behavior.gold_trend == "rising"  # started at last_gold=0
+    assert state.player.behavior.last_gold == 50
+
+
+def test_advance_time_zero_days_does_not_decay_behavior():
+    state = make_state(day=0)
+    state.player.behavior.combat_actions = 5.0
+
+    advance_time(state, 0)
+
+    assert state.player.behavior.combat_actions == 5.0
 
 
 def test_blizzard_demo_blocks_then_reopens_the_pass():

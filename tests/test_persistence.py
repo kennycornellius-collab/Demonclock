@@ -166,6 +166,49 @@ def test_starter_skills_persist_in_order(tmp_path):
     conn.close()
 
 
+def test_behavior_profile_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    player.gold = 30
+    player.behavior.trade_actions = 1.5
+    player.behavior.combat_actions = 4.2
+    player.behavior.dialogue_actions = 0.3
+    player.behavior.crafting_actions = 2.0
+    player.behavior.last_gold = 10
+    player.behavior.gold_trend = "rising"
+    player.behavior.recent_locations = ["village", "road", "market"]
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.behavior.trade_actions == 1.5
+    assert loaded_player.behavior.combat_actions == 4.2
+    assert loaded_player.behavior.dialogue_actions == 0.3
+    assert loaded_player.behavior.crafting_actions == 2.0
+    assert loaded_player.behavior.last_gold == 10
+    assert loaded_player.behavior.gold_trend == "rising"
+    assert loaded_player.behavior.recent_locations == ["village", "road", "market"]
+
+    conn.close()
+
+
+def test_behavior_profile_defaults_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.behavior.gold_trend == "flat"
+    assert loaded_player.behavior.recent_locations == []
+
+    conn.close()
+
+
 def test_save_is_a_full_overwrite_not_an_accumulation(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from . import behavior
 from .models import Player
 from .skills import (
     BASIC_ATTACK,
@@ -272,6 +273,7 @@ def run_combat(
                     player.mana = fighter.mana
                     log.append(f"You flee from the {enemy.name}.")
                     return CombatResult.FLED, log
+                behavior.record_combat_action(player.behavior)
                 if skill is not BASIC_ATTACK:
                     fair = compute_fair_cost(skill.effects, _magnitude(fighter, skill))
                     if is_underpriced(skill, fair):

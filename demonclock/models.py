@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .behavior import BehaviorProfile
 from .skills import Skill
 
 # Reverse-direction table for the bidirectional link constructor (SPEC.md §3).
@@ -73,3 +74,4 @@ class Player:
     # Set the moment a rule-breaking (fair-cost-undercutting) skill is CAST,
     # not when it's created (SPEC.md §6b) — see combat.run_combat.
     creative_mode_used: bool = False
+    behavior: BehaviorProfile = field(default_factory=BehaviorProfile)

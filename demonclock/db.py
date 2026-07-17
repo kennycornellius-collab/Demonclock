@@ -47,7 +47,14 @@ CREATE TABLE IF NOT EXISTS player (
     perception INTEGER NOT NULL,
     luck INTEGER NOT NULL,
     gold INTEGER NOT NULL,
-    creative_mode_used INTEGER NOT NULL DEFAULT 0
+    creative_mode_used INTEGER NOT NULL DEFAULT 0,
+    trade_actions REAL NOT NULL DEFAULT 0,
+    combat_actions REAL NOT NULL DEFAULT 0,
+    dialogue_actions REAL NOT NULL DEFAULT 0,
+    crafting_actions REAL NOT NULL DEFAULT 0,
+    last_gold INTEGER NOT NULL DEFAULT 0,
+    gold_trend TEXT NOT NULL DEFAULT 'flat',
+    recent_locations TEXT NOT NULL DEFAULT '[]'  -- JSON list (BehaviorProfile, SPEC §5)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -130,7 +137,9 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute(
         "INSERT INTO player (id, name, location_id, hp, hp_max, mana, mana_max, "
         "strength, magic, agility, defense, charisma, perception, luck, gold, "
-        "creative_mode_used) VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "creative_mode_used, trade_actions, combat_actions, dialogue_actions, "
+        "crafting_actions, last_gold, gold_trend, recent_locations) "
+        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -147,6 +156,13 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             player.luck,
             player.gold,
             int(player.creative_mode_used),
+            player.behavior.trade_actions,
+            player.behavior.combat_actions,
+            player.behavior.dialogue_actions,
+            player.behavior.crafting_actions,
+            player.behavior.last_gold,
+            player.behavior.gold_trend,
+            json.dumps(player.behavior.recent_locations),
         ),
     )
     for item in player.inventory:
@@ -181,6 +197,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
 def load_game(conn: sqlite3.Connection):
     """Returns (World, Player, Clock) rebuilt from the save file, or None if
     no save exists yet."""
+    from .behavior import BehaviorProfile
     from .clock import Clock
     from .events import ScheduledEvent
     from .models import InventoryItem, Link, Node, Player
@@ -211,7 +228,9 @@ def load_game(conn: sqlite3.Connection):
 
     prow = conn.execute(
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
-        "agility, defense, charisma, perception, luck, gold, creative_mode_used "
+        "agility, defense, charisma, perception, luck, gold, creative_mode_used, "
+        "trade_actions, combat_actions, dialogue_actions, crafting_actions, "
+        "last_gold, gold_trend, recent_locations "
         "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
@@ -222,12 +241,17 @@ def load_game(conn: sqlite3.Connection):
         Skill.from_dict(json.loads(r[0]))
         for r in conn.execute("SELECT data FROM skills ORDER BY sort_order")
     ]
+    behavior_profile = BehaviorProfile(
+        trade_actions=prow[15], combat_actions=prow[16], dialogue_actions=prow[17],
+        crafting_actions=prow[18], last_gold=prow[19], gold_trend=prow[20],
+        recent_locations=json.loads(prow[21]),
+    )
     player = Player(
         name=prow[0], location_id=prow[1], hp=prow[2], hp_max=prow[3],
         mana=prow[4], mana_max=prow[5], strength=prow[6], magic=prow[7],
         agility=prow[8], defense=prow[9], charisma=prow[10], perception=prow[11],
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
-        creative_mode_used=bool(prow[14]),
+        creative_mode_used=bool(prow[14]), behavior=behavior_profile,
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

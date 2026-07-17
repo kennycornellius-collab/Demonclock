@@ -170,6 +170,24 @@ def test_basic_attack_never_sets_creative_mode_used():
     assert player.creative_mode_used is False
 
 
+def test_run_combat_records_a_combat_action_per_player_cast():
+    player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert player.behavior.combat_actions == 1.0  # one-shots on the player's single turn
+
+
+def test_run_combat_fleeing_does_not_record_a_combat_action():
+    player = make_player(strength=1, defense=0, agility=100, hp=50, hp_max=50)
+    enemy = make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: None)
+
+    assert player.behavior.combat_actions == 0.0
+
+
 def test_run_combat_casts_a_learned_skill_and_deducts_mana():
     firebolt = Skill(
         id="firebolt_test",

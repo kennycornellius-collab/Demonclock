@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import sim
+from . import behavior, sim
 from .parser import Action, ActionType
 from .state import GameState
 
@@ -48,6 +48,7 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
         return Outcome(f"The way {direction} is blocked ({reason}).", ok=False)
 
     state.player.location_id = link.to_id
+    behavior.record_location(state.player.behavior, link.to_id)
     tick_log = sim.advance_time(state, link.travel_days)
     node = state.world.nodes[link.to_id]
     message = (
@@ -80,7 +81,8 @@ def _resolve_inventory(state: GameState) -> Outcome:
         items_desc = "empty"
     else:
         items_desc = ", ".join(f"{item.name} x{item.quantity}" for item in state.player.inventory)
-    return Outcome(f"Gold: {state.player.gold}. Inventory: {items_desc}.")
+    hint = behavior.derived_role_hint(state.player.behavior)
+    return Outcome(f"Gold: {state.player.gold}. Inventory: {items_desc}. You seem: {hint}.")
 
 
 def _resolve_rest(state: GameState) -> Outcome:

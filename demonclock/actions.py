@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import behavior, sim
+from . import behavior, setback, sim
 from .parser import Action, ActionType
 from .state import GameState
 
@@ -31,6 +31,8 @@ def resolve(action: Action, state: GameState) -> Outcome:
 
 
 def _resolve_move(action: Action, state: GameState) -> Outcome:
+    if state.player.captured:
+        return Outcome("You are captured and can't move until you're free.", ok=False)
     if not action.target:
         return Outcome("Go where? Try 'go north'.", ok=False)
 
@@ -96,4 +98,14 @@ def _resolve_rest(state: GameState) -> Outcome:
     )
     if tick_log:
         message += "\n" + "\n".join(tick_log)
+
+    if player.captured:
+        escape_log = setback.check_escape(player, state.clock.current_day)
+        if escape_log:
+            message += "\n" + "\n".join(escape_log)
+        else:
+            message += (
+                f"\nStill captured. Ransom {player.ransom_cost} gold (you have "
+                f"{player.gold}), or free by day {player.free_by_day}."
+            )
     return Outcome(message)

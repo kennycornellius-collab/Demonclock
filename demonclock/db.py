@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS player (
     crafting_actions REAL NOT NULL DEFAULT 0,
     last_gold INTEGER NOT NULL DEFAULT 0,
     gold_trend TEXT NOT NULL DEFAULT 'flat',
-    recent_locations TEXT NOT NULL DEFAULT '[]'  -- JSON list (BehaviorProfile, SPEC §5)
+    recent_locations TEXT NOT NULL DEFAULT '[]',  -- JSON list (BehaviorProfile, SPEC §5)
+    captured INTEGER NOT NULL DEFAULT 0,
+    ransom_cost INTEGER NOT NULL DEFAULT 0,
+    free_by_day INTEGER  -- NULL whenever not captured (setback.py, SPEC §11.1)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -138,8 +141,9 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         "INSERT INTO player (id, name, location_id, hp, hp_max, mana, mana_max, "
         "strength, magic, agility, defense, charisma, perception, luck, gold, "
         "creative_mode_used, trade_actions, combat_actions, dialogue_actions, "
-        "crafting_actions, last_gold, gold_trend, recent_locations) "
-        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "crafting_actions, last_gold, gold_trend, recent_locations, captured, "
+        "ransom_cost, free_by_day) "
+        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -163,6 +167,9 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             player.behavior.last_gold,
             player.behavior.gold_trend,
             json.dumps(player.behavior.recent_locations),
+            int(player.captured),
+            player.ransom_cost,
+            player.free_by_day,
         ),
     )
     for item in player.inventory:
@@ -230,7 +237,7 @@ def load_game(conn: sqlite3.Connection):
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
         "agility, defense, charisma, perception, luck, gold, creative_mode_used, "
         "trade_actions, combat_actions, dialogue_actions, crafting_actions, "
-        "last_gold, gold_trend, recent_locations "
+        "last_gold, gold_trend, recent_locations, captured, ransom_cost, free_by_day "
         "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
@@ -252,6 +259,7 @@ def load_game(conn: sqlite3.Connection):
         agility=prow[8], defense=prow[9], charisma=prow[10], perception=prow[11],
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
+        captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

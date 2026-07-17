@@ -209,6 +209,41 @@ def test_behavior_profile_defaults_for_a_fresh_player(tmp_path):
     conn.close()
 
 
+def test_captured_state_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    player.captured = True
+    player.ransom_cost = 50
+    player.free_by_day = 12
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.captured is True
+    assert loaded_player.ransom_cost == 50
+    assert loaded_player.free_by_day == 12
+
+    conn.close()
+
+
+def test_captured_state_defaults_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.captured is False
+    assert loaded_player.ransom_cost == 0
+    assert loaded_player.free_by_day is None
+
+    conn.close()
+
+
 def test_save_is_a_full_overwrite_not_an_accumulation(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

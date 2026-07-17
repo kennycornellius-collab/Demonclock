@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import combat, db, skills
+from . import combat, db, setback, skills
 from .actions import resolve
 from .clock import Clock
 from .enemies import make_enemy
@@ -21,6 +21,17 @@ MENU = """
 5) Something else...
 6) Skills
 7) Save & Quit
+"""
+
+# Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
+# Interact/Skills are unreachable from here; only the two recovery paths
+# (setback.pay_ransom, waiting via the ordinary Rest handler) plus Save & Quit.
+CAPTURED_MENU = """
+--- Captured! (day {day}) ---
+Ransom: {ransom} gold (you have {gold} gold). Free by day {free_day} regardless.
+1) Pay ransom
+2) Wait
+3) Save & Quit
 """
 
 
@@ -83,7 +94,7 @@ def handle_interact(state: GameState) -> None:
         except (ValueError, IndexError):
             return options[0]  # invalid input defaults to the first (Basic Attack)
 
-    _result, log = combat.run_combat(state.player, enemy, choose_action)
+    _result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
 
@@ -94,6 +105,11 @@ def handle_inventory(state: GameState) -> None:
 
 def handle_rest(state: GameState) -> None:
     print(resolve(parse("rest"), state).message)
+
+
+def handle_pay_ransom(state: GameState) -> None:
+    for line in setback.pay_ransom(state.player):
+        print(line)
 
 
 def _render_skill_line(skill: skills.Skill) -> str:
@@ -256,9 +272,31 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         "5": handle_free_text,
         "6": handle_skills,
     }
+    captured_handlers = {
+        "1": handle_pay_ransom,
+        "2": handle_rest,
+    }
 
     try:
         while True:
+            player = state.player
+            if player.captured:
+                print(CAPTURED_MENU.format(
+                    day=state.clock.current_day, ransom=player.ransom_cost,
+                    gold=player.gold, free_day=player.free_by_day,
+                ))
+                choice = input("> ").strip()
+                if choice == "3":
+                    db.save_game(conn, state.world, state.player, state.clock)
+                    print("Saved. Farewell.")
+                    break
+                handler = captured_handlers.get(choice)
+                if handler is None:
+                    print("Not a valid choice.")
+                    continue
+                handler(state)
+                continue
+
             node = state.world.nodes[state.player.location_id]
             print(MENU.format(node_name=node.name, day=state.clock.current_day))
             choice = input("> ").strip()

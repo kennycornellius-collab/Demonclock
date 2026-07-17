@@ -112,6 +112,42 @@ def test_inventory_shows_a_derived_role_hint():
     assert "You seem: still finding their way." in outcome.message
 
 
+def test_move_is_blocked_while_captured():
+    state = make_state()
+    state.player.captured = True
+    state.player.free_by_day = 999
+
+    outcome = resolve(parse("go east"), state)
+
+    assert not outcome.ok
+    assert state.player.location_id == "village"
+    assert state.clock.current_day == 0  # never advanced
+
+
+def test_rest_reminds_of_captivity_status_while_still_held():
+    state = make_state()
+    state.player.captured = True
+    state.player.ransom_cost = 50
+    state.player.free_by_day = 100  # far in the future
+
+    outcome = resolve(parse("rest"), state)
+
+    assert state.player.captured is True
+    assert "Still captured" in outcome.message
+
+
+def test_rest_escapes_once_the_free_day_is_reached():
+    state = make_state()
+    state.player.captured = True
+    state.player.ransom_cost = 50
+    state.player.free_by_day = 1  # one rest (day 0 -> day 1) reaches it
+
+    outcome = resolve(parse("rest"), state)
+
+    assert state.player.captured is False
+    assert "free" in outcome.message.lower()
+
+
 def test_combat_does_not_tick_the_sim():
     state = make_state()
     events_before = len(state.world.scheduled_events)

@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from . import behavior
+from . import behavior, setback
 from .models import Player
 from .skills import (
     BASIC_ATTACK,
@@ -237,6 +237,7 @@ def run_combat(
     player: Player,
     enemy: Combatant,
     choose_action: Callable[[Combatant, Combatant, list[Skill]], Skill | None],
+    current_day: int = 0,
 ) -> tuple[CombatResult, list[str]]:
     """Resolves a fight to VICTORY/DEFEAT/FLED.
 
@@ -248,7 +249,9 @@ def run_combat(
     per-encounter Combatant built by the caller).
 
     Combat does not advance the day clock — SPEC.md §4 reserves that for
-    travel/rest, not intra-day actions.
+    travel/rest, not intra-day actions. `current_day` is only needed to stamp
+    a captured player's guaranteed release day (setback.py) on DEFEAT; it
+    defaults to 0 since most tests don't care about the exact day.
     """
     fighter = Combatant.from_player(player)
     log: list[str] = []
@@ -290,14 +293,15 @@ def run_combat(
     player.mana = fighter.mana
 
     if fighter.hp <= 0:
-        # Placeholder recovery until the real setback-state system lands
-        # (SPEC.md §11.1): losing a fight is never game-over except vs. the
-        # demon king / designated bosses, and a setback must never soft-lock.
+        # SPEC.md §11.1: losing a fight is never game-over except vs. the
+        # demon king / designated bosses — an ordinary loss is a recoverable
+        # setback (setback.py), never a soft-lock.
         player.hp = max(1, player.hp_max // 4)
         log.append(
             f"You are defeated by the {enemy.name}! You come to, battered but "
             f"alive ({player.hp}/{player.hp_max} HP)."
         )
+        log.extend(setback.capture_player(player, current_day))
         return CombatResult.DEFEAT, log
 
     log.append(f"You defeated the {enemy.name}!")

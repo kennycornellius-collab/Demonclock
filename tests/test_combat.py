@@ -170,6 +170,27 @@ def test_basic_attack_never_sets_creative_mode_used():
     assert player.creative_mode_used is False
 
 
+def test_run_combat_defeat_captures_the_player():
+    player = make_player(strength=1, defense=0, agility=1, hp=5, hp_max=20, gold=100)
+    enemy = make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=20, defense=0)
+
+    result, log = run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK, current_day=7)
+
+    assert result is CombatResult.DEFEAT
+    assert player.captured is True
+    assert player.free_by_day == 7 + 3  # setback.ESCAPE_AFTER_DAYS
+    assert any("captured" in line.lower() for line in log)
+
+
+def test_run_combat_victory_does_not_capture_the_player():
+    player = make_player(strength=50, defense=20, agility=20, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK, current_day=7)
+
+    assert player.captured is False
+
+
 def test_run_combat_records_a_combat_action_per_player_cast():
     player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
     enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)

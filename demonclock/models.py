@@ -75,3 +75,9 @@ class Player:
     # not when it's created (SPEC.md §6b) — see combat.run_combat.
     creative_mode_used: bool = False
     behavior: BehaviorProfile = field(default_factory=BehaviorProfile)
+    # Setback state (SPEC.md §11.1): an ordinary lost fight captures the
+    # player rather than ending the game — see setback.py. free_by_day is
+    # None whenever not captured.
+    captured: bool = False
+    ransom_cost: int = 0
+    free_by_day: int | None = None

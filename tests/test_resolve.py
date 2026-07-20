@@ -22,19 +22,32 @@ def test_duplicate_exact_names_are_ambiguous_and_unresolved():
     assert resolve_entity("Old Lord", shortlist) is None
 
 
-def test_fuzzy_substring_match_resolves_a_loosely_worded_reference():
+def test_fuzzy_token_match_resolves_a_loosely_worded_reference():
     shortlist = [("npc_001", "Old Lord"), ("npc_002", "Merchant Guild Rep")]
     assert resolve_entity("the old lord", shortlist) == "npc_001"
 
 
-def test_fuzzy_match_works_in_the_other_direction_too():
+def test_fuzzy_token_match_works_in_the_other_direction_too():
     shortlist = [("node_042", "Old North Road")]
     assert resolve_entity("road", shortlist) == "node_042"
 
 
-def test_fuzzy_ambiguous_match_is_unresolved():
+def test_fuzzy_token_match_ignores_a_leading_stopword_the_others_lack():
+    # A pure substring check would miss this ("the wilds" is not a
+    # substring of "Bramblewood Wilds" and vice versa); stopword-filtered
+    # token-subset matching resolves it correctly.
+    shortlist = [("node_099", "Bramblewood Wilds"), ("node_100", "Millhaven Market")]
+    assert resolve_entity("the wilds", shortlist) == "node_099"
+
+
+def test_fuzzy_token_match_is_unresolved_when_multiple_candidates_share_a_word():
     shortlist = [("npc_001", "Old Lord"), ("npc_002", "Old Blacksmith")]
     assert resolve_entity("old", shortlist) is None
+
+
+def test_fuzzy_token_match_is_unresolved_on_a_shared_partial_name():
+    shortlist = [("village", "Millhaven Village"), ("market", "Millhaven Market")]
+    assert resolve_entity("Millhaven", shortlist) is None
 
 
 def test_never_matches_something_absent_from_the_shortlist():
@@ -61,5 +74,6 @@ def test_resolves_against_real_world_nodes_by_name():
     shortlist = [(node.id, node.name) for node in world.nodes.values()]
 
     assert resolve_entity("Millhaven Market", shortlist) == "market"
-    assert resolve_entity("wilds", shortlist) == "wilds"  # substring of "Bramblewood Wilds"
+    assert resolve_entity("wilds", shortlist) == "wilds"
+    assert resolve_entity("the wilds", shortlist) == "wilds"  # token-subset match
     assert resolve_entity("Some Unrelated Place", shortlist) is None

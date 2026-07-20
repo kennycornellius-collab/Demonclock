@@ -1,18 +1,34 @@
-from demonclock.actions import resolve
+from demonclock.actions import resolve, resolve_fast_travel
 from demonclock.clock import Clock
 from demonclock.combat import run_combat
 from demonclock.enemies import make_enemy
 from demonclock.events import EventKind, ScheduledEvent
+from demonclock.knowledge import NodeBelief
+from demonclock.models import Node
 from demonclock.parser import parse
 from demonclock.player import new_player
 from demonclock.seed import new_default_world
 from demonclock.skills import BASIC_ATTACK
 from demonclock.state import GameState
+from demonclock.world import World
 
 
 def make_state() -> GameState:
     world = new_default_world()
     player = new_player(name="Hero", location_id="village")
+    return GameState(world=world, player=player, clock=Clock())
+
+
+def make_linear_state() -> GameState:
+    """a --1day--> b --2days--> c, no seeded events — isolates fast-travel
+    tests from the default world's blizzard/invasion/price timers."""
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    world.add_node(Node(id="b", name="B"))
+    world.add_node(Node(id="c", name="C"))
+    world.add_link("a", "b", "north", travel_days=1)
+    world.add_link("b", "c", "north", travel_days=2)
+    player = new_player(name="Hero", location_id="a")
     return GameState(world=world, player=player, clock=Clock())
 
 
@@ -141,6 +157,73 @@ def test_rest_records_a_belief_of_the_current_node_including_events_that_fired_t
     belief = state.player.beliefs["village"]
     assert belief.state == "occupied"
     assert belief.last_seen_day == state.clock.current_day
+
+
+def test_fast_travel_to_an_unknown_node_is_refused():
+    state = make_linear_state()
+    outcome = resolve_fast_travel(state, "c")
+    assert not outcome.ok
+    assert state.player.location_id == "a"
+    assert state.clock.current_day == 0
+
+
+def test_fast_travel_to_the_current_location_is_refused():
+    state = make_linear_state()
+    outcome = resolve_fast_travel(state, "a")
+    assert not outcome.ok
+
+
+def test_fast_travel_walks_a_multihop_route_and_sums_travel_days():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+
+    outcome = resolve_fast_travel(state, "c")
+
+    assert outcome.ok
+    assert state.player.location_id == "c"
+    assert state.clock.current_day == 3  # 1 (a->b) + 2 (b->c)
+
+
+def test_fast_travel_records_a_belief_of_the_destination():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+
+    resolve_fast_travel(state, "c")
+
+    assert state.player.beliefs["c"].last_seen_day == 3
+
+
+def test_fast_travel_does_not_record_belief_of_intermediate_nodes():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+
+    resolve_fast_travel(state, "c")
+
+    assert "b" not in state.player.beliefs
+
+
+def test_fast_travel_is_blocked_while_captured():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+    state.player.captured = True
+    state.player.free_by_day = 999
+
+    outcome = resolve_fast_travel(state, "c")
+
+    assert not outcome.ok
+    assert state.player.location_id == "a"
+
+
+def test_fast_travel_is_refused_when_no_open_route_exists():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+    state.world.block_link("b", "c", reason="snow")
+
+    outcome = resolve_fast_travel(state, "c")
+
+    assert not outcome.ok
+    assert state.player.location_id == "a"
+    assert state.clock.current_day == 0
 
 
 def test_inventory_shows_a_derived_role_hint():

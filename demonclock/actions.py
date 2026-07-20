@@ -63,6 +63,40 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
     return Outcome(message)
 
 
+def resolve_fast_travel(state: GameState, destination_id: str) -> Outcome:
+    """Multi-hop travel to a KNOWN node in one call (SPEC.md §3/§4: the Atlas
+    is what fast-travel navigates by; instant teleport is forbidden, so this
+    still advances the clock by the route's full `travel_days`, same as a
+    manual hop, just without stopping to look around partway). Menu-only —
+    triggered from game.handle_atlas, not routed through the free-text
+    parser (same shape as setback.pay_ransom being called directly rather
+    than through `resolve`)."""
+    player = state.player
+    if player.captured:
+        return Outcome("You are captured and can't travel until you're free.", ok=False)
+    if destination_id == player.location_id:
+        return Outcome("You're already there.", ok=False)
+    if destination_id not in player.beliefs:
+        return Outcome("You don't know how to get there yet.", ok=False)
+
+    route = state.world.shortest_path(player.location_id, destination_id)
+    if route is None:
+        return Outcome("There's no open route there right now.", ok=False)
+
+    state.player.location_id = destination_id
+    behavior.record_location(state.player.behavior, destination_id)
+    tick_log = sim.advance_time(state, route.total_days)
+    node = state.world.nodes[destination_id]
+    knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)
+    message = (
+        f"You fast-travel to {node.name} ({route.total_days} day(s) pass, "
+        f"now day {state.clock.current_day})."
+    )
+    if tick_log:
+        message += "\n" + "\n".join(tick_log)
+    return Outcome(message)
+
+
 def _resolve_look(state: GameState) -> Outcome:
     node = state.world.nodes[state.player.location_id]
     knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)

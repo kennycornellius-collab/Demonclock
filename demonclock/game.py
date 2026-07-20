@@ -4,7 +4,7 @@ Something else... The free-text box is the only place the parser runs.
 from __future__ import annotations
 
 from . import combat, db, knowledge, setback, skills
-from .actions import resolve
+from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
 from .parser import parse
@@ -20,7 +20,8 @@ MENU = """
 4) Rest
 5) Something else...
 6) Skills
-7) Save & Quit
+7) Atlas
+8) Save & Quit
 """
 
 # Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
@@ -107,6 +108,53 @@ def handle_inventory(state: GameState) -> None:
 
 def handle_rest(state: GameState) -> None:
     print(resolve(parse("rest"), state).message)
+
+
+def handle_atlas(state: GameState) -> None:
+    """Discovered-places view + the fast-travel trigger (SPEC.md §3/§10):
+    lists what the player BELIEVES about each known node — last-seen state
+    and day, not live world truth — then offers to walk a full route there
+    in one time-costed jump."""
+    beliefs = state.player.beliefs
+    if not beliefs:
+        print("You don't know of anywhere yet.")
+        return
+
+    entries = sorted(beliefs.items(), key=lambda kv: state.world.nodes[kv[0]].name)
+    print("--- Atlas (known places) ---")
+    for i, (node_id, belief) in enumerate(entries, start=1):
+        name = state.world.nodes[node_id].name
+        here = " (here)" if node_id == state.player.location_id else ""
+        print(f"  {i}) {name}{here} — as of day {belief.last_seen_day}: {belief.state}")
+
+    choice = input("Fast-travel to which? (number, blank to cancel) ").strip()
+    if not choice:
+        return
+    try:
+        index = int(choice)
+        destination_id = entries[index - 1][0]
+    except (ValueError, IndexError):
+        print("Not a valid choice.")
+        return
+
+    if destination_id == state.player.location_id:
+        print("You're already there.")
+        return
+
+    route = state.world.shortest_path(state.player.location_id, destination_id)
+    if route is None:
+        print("There's no open route there right now.")
+        return
+
+    confirm = input(
+        f"This will take {route.total_days} day(s) and land you wherever the "
+        f"world has moved to by then. Go? (y/N) "
+    ).strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return
+
+    print(resolve_fast_travel(state, destination_id).message)
 
 
 def handle_pay_ransom(state: GameState) -> None:
@@ -273,6 +321,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         "4": handle_rest,
         "5": handle_free_text,
         "6": handle_skills,
+        "7": handle_atlas,
     }
     captured_handlers = {
         "1": handle_pay_ransom,
@@ -303,7 +352,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
             print(MENU.format(node_name=node.name, day=state.clock.current_day))
             choice = input("> ").strip()
 
-            if choice == "7":
+            if choice == "8":
                 db.save_game(conn, state.world, state.player, state.clock)
                 print("Saved. Farewell.")
                 break

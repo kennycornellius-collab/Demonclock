@@ -19,7 +19,7 @@ structurally true and tested before the batch is real.
 """
 from __future__ import annotations
 
-from . import behavior, economy
+from . import behavior, economy, history
 from .events import EventKind, ScheduledEvent
 from .state import GameState
 
@@ -41,19 +41,25 @@ def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
             payload["from_id"], payload["to_id"], payload["reason"],
             directional_block=payload.get("directional_block", False),
         )
-        return [event.description or f"{payload['from_id']} -> {payload['to_id']} is now blocked ({payload['reason']})."]
+        description = event.description or f"{payload['from_id']} -> {payload['to_id']} is now blocked ({payload['reason']})."
+        history.record(world.event_log, state.clock.current_day, payload["from_id"], event.kind, description)
+        return [description]
 
     if event.kind is EventKind.UNBLOCK_LINK:
         world.unblock_link(
             payload["from_id"], payload["to_id"],
             directional_block=payload.get("directional_block", False),
         )
-        return [event.description or f"{payload['from_id']} -> {payload['to_id']} is open again."]
+        description = event.description or f"{payload['from_id']} -> {payload['to_id']} is open again."
+        history.record(world.event_log, state.clock.current_day, payload["from_id"], event.kind, description)
+        return [description]
 
     if event.kind is EventKind.SET_NODE_STATE:
         node = world.nodes[payload["node_id"]]
         node.state = payload["state"]
-        return [event.description or f"{node.name} is now {payload['state']}."]
+        description = event.description or f"{node.name} is now {payload['state']}."
+        history.record(world.event_log, state.clock.current_day, node.id, event.kind, description)
+        return [description]
 
     if event.kind is EventKind.INVASION_SPREAD:
         return _apply_invasion_spread(state, event)

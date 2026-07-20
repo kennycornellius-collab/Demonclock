@@ -10,6 +10,7 @@ import heapq
 from dataclasses import dataclass
 
 from .events import ScheduledEvent
+from .history import LogEntry
 from .models import OPPOSITE_DIRECTION, Link, Node
 
 
@@ -28,6 +29,9 @@ class World:
         self.nodes: dict[str, Node] = {}
         self.links: dict[str, list[Link]] = {}  # from_id -> outgoing Links
         self.scheduled_events: list[ScheduledEvent] = []  # SPEC.md §3/§12 step 2
+        # Append-only history log (SPEC.md §9) — grows forever, only ever
+        # appended to via history.record, never pruned like scheduled_events.
+        self.event_log: list[LogEntry] = []
 
     # -- construction --------------------------------------------------
 

@@ -1,6 +1,7 @@
 from demonclock import db
 from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
+from demonclock.history import LogEntry
 from demonclock.knowledge import NodeBelief
 from demonclock.player import add_item, new_player
 from demonclock.seed import new_default_world
@@ -271,6 +272,40 @@ def test_player_beliefs_default_to_empty_for_a_fresh_player(tmp_path):
     _, loaded_player, _ = db.load_game(conn)
 
     assert loaded_player.beliefs == {}
+
+    conn.close()
+
+
+def test_event_log_round_trips_in_order(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    world.event_log = [
+        LogEntry(day=4, node_id="road", kind=EventKind.BLOCK_LINK, description="A blizzard closes the northern pass."),
+        LogEntry(day=15, node_id="road", kind=EventKind.SET_NODE_STATE, description="The invasion overruns Old North Road."),
+    ]
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.event_log == world.event_log
+
+    conn.close()
+
+
+def test_event_log_defaults_to_empty_for_a_fresh_world(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()  # no ticks have fired yet
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.event_log == []
 
     conn.close()
 

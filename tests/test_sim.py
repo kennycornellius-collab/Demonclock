@@ -197,6 +197,65 @@ def make_linear_world(occupied_id: str = "a") -> World:
 
 # -- invasion spread (Stage 2, SPEC.md §3) ---------------------------------
 
+def test_apply_event_block_link_appends_a_history_entry():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    state = make_state(world, day=7)
+    event = ScheduledEvent(due_day=7, kind=EventKind.BLOCK_LINK, payload={"from_id": "a", "to_id": "b", "reason": "snow"})
+
+    apply_event(state, event)
+
+    assert len(world.event_log) == 1
+    entry = world.event_log[0]
+    assert entry.day == 7
+    assert entry.node_id == "a"
+    assert entry.kind is EventKind.BLOCK_LINK
+    assert "blocked" in entry.description
+
+
+def test_apply_event_set_node_state_appends_a_history_entry():
+    world = make_world("a")
+    state = make_state(world, day=15)
+    event = ScheduledEvent(
+        due_day=15, kind=EventKind.SET_NODE_STATE, payload={"node_id": "a", "state": "occupied"},
+        description="The invasion overruns A.",
+    )
+
+    apply_event(state, event)
+
+    entry = world.event_log[0]
+    assert entry.day == 15
+    assert entry.node_id == "a"
+    assert entry.kind is EventKind.SET_NODE_STATE
+    assert entry.description == "The invasion overruns A."
+
+
+def test_apply_event_never_removes_earlier_history_entries():
+    world = make_world("a")
+    state = make_state(world)
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.SET_NODE_STATE, payload={"node_id": "a", "state": "occupied"}))
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.SET_NODE_STATE, payload={"node_id": "a", "state": "ruined"}))
+
+    assert len(world.event_log) == 2
+    assert [e.description for e in world.event_log] == [
+        "A is now occupied.", "A is now ruined.",
+    ]
+
+
+def test_price_shift_does_not_append_to_the_history_log():
+    # PRICE_SHIFT has no single node it's "about" — economy.apply_price_shift
+    # never recurses through apply_event, so it produces no log entry at all
+    # (grain prices are already directly observable via `look`, no rumor
+    # needed to learn about them).
+    world = make_world("a")
+    world.nodes["a"].prices = {"grain": 10}
+    state = make_state(world)
+
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.PRICE_SHIFT))
+
+    assert world.event_log == []
+
+
 def test_apply_event_never_writes_player_belief():
     # SPEC.md §13: belief is never silently overwritten by truth — only an
     # explicit act of observation (actions.py) may write player.beliefs.
@@ -224,6 +283,23 @@ def test_invasion_spread_occupies_open_frontier_and_blocks_crossed_link():
     assert world.get_link("b", "a").status == "blocked"
     assert world.get_link("b", "c").status == "open"  # not crossed yet
     assert any("overruns" in line for line in log)
+
+
+def test_invasion_spread_appends_history_entries_for_the_conquered_node_and_crossed_link():
+    world = make_linear_world()
+    state = make_state(world, day=0)
+
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    kinds = [e.kind for e in world.event_log]
+    assert EventKind.SET_NODE_STATE in kinds
+    assert EventKind.BLOCK_LINK in kinds
+    occupied_entry = next(e for e in world.event_log if e.kind is EventKind.SET_NODE_STATE)
+    assert occupied_entry.node_id == "b"
+    assert occupied_entry.day == 0
+    # the top-level INVASION_SPREAD event itself never gets logged — only its
+    # concrete SET_NODE_STATE/BLOCK_LINK sub-events, which actually name a node
+    assert all(e.kind is not EventKind.INVASION_SPREAD for e in world.event_log)
 
 
 def test_invasion_spread_reschedules_next_tick_when_nodes_remain():

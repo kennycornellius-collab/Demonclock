@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .behavior import BehaviorProfile
+from .knowledge import NodeBelief
 from .skills import Skill
 
 # Reverse-direction table for the bidirectional link constructor (SPEC.md §3).
@@ -81,3 +82,6 @@ class Player:
     captured: bool = False
     ransom_cost: int = 0
     free_by_day: int | None = None
+    # Player belief layer (SPEC.md §10): node_id -> last-observed snapshot.
+    # Written ONLY by knowledge.observe_node — never by the world-sim tick.
+    beliefs: dict[str, NodeBelief] = field(default_factory=dict)

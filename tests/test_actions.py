@@ -107,6 +107,42 @@ def test_move_records_the_destination_in_recent_locations():
     assert state.player.behavior.recent_locations == ["market"]
 
 
+def test_move_records_a_belief_of_the_destination():
+    state = make_state()
+    resolve(parse("go east"), state)
+    belief = state.player.beliefs["market"]
+    assert belief.state == "peaceful"
+    assert belief.last_seen_day == state.clock.current_day
+
+
+def test_move_does_not_record_a_belief_of_the_origin_or_other_nodes():
+    state = make_state()
+    resolve(parse("go east"), state)
+    assert "village" not in state.player.beliefs  # origin: never looked at, only left
+    assert "wilds" not in state.player.beliefs
+
+
+def test_look_records_a_belief_of_the_current_node():
+    state = make_state()
+    resolve(parse("look"), state)
+    assert "village" in state.player.beliefs
+    assert state.player.beliefs["village"].last_seen_day == state.clock.current_day
+
+
+def test_rest_records_a_belief_of_the_current_node_including_events_that_fired_there():
+    state = make_state()
+    state.world.schedule_event(ScheduledEvent(
+        due_day=1, kind=EventKind.SET_NODE_STATE,
+        payload={"node_id": "village", "state": "occupied"},
+    ))
+
+    resolve(parse("rest"), state)
+
+    belief = state.player.beliefs["village"]
+    assert belief.state == "occupied"
+    assert belief.last_seen_day == state.clock.current_day
+
+
 def test_inventory_shows_a_derived_role_hint():
     outcome = resolve(parse("inventory"), make_state())
     assert "You seem: still finding their way." in outcome.message

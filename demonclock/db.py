@@ -77,6 +77,11 @@ CREATE TABLE IF NOT EXISTS scheduled_events (
     data TEXT NOT NULL   -- JSON-encoded ScheduledEvent.to_dict()
 );
 
+CREATE TABLE IF NOT EXISTS player_beliefs (
+    node_id TEXT PRIMARY KEY,
+    data TEXT NOT NULL   -- JSON-encoded NodeBelief.to_dict() (SPEC.md §10)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -113,6 +118,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM inventory")
     conn.execute("DELETE FROM skills")
     conn.execute("DELETE FROM scheduled_events")
+    conn.execute("DELETE FROM player_beliefs")
 
     for node in world.nodes.values():
         conn.execute(
@@ -187,6 +193,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO scheduled_events (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(event.to_dict())),
         )
+    for node_id, belief in player.beliefs.items():
+        conn.execute(
+            "INSERT INTO player_beliefs (node_id, data) VALUES (?, ?)",
+            (node_id, json.dumps(belief.to_dict())),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -207,6 +218,7 @@ def load_game(conn: sqlite3.Connection):
     from .behavior import BehaviorProfile
     from .clock import Clock
     from .events import ScheduledEvent
+    from .knowledge import NodeBelief
     from .models import InventoryItem, Link, Node, Player
     from .skills import Skill
     from .world import World
@@ -248,6 +260,10 @@ def load_game(conn: sqlite3.Connection):
         Skill.from_dict(json.loads(r[0]))
         for r in conn.execute("SELECT data FROM skills ORDER BY sort_order")
     ]
+    beliefs = {
+        r[0]: NodeBelief.from_dict(json.loads(r[1]))
+        for r in conn.execute("SELECT node_id, data FROM player_beliefs")
+    }
     behavior_profile = BehaviorProfile(
         trade_actions=prow[15], combat_actions=prow[16], dialogue_actions=prow[17],
         crafting_actions=prow[18], last_gold=prow[19], gold_trend=prow[20],
@@ -260,6 +276,7 @@ def load_game(conn: sqlite3.Connection):
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
+        beliefs=beliefs,
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import combat, db, setback, skills
+from . import combat, db, knowledge, setback, skills
 from .actions import resolve
 from .clock import Clock
 from .enemies import make_enemy
@@ -38,6 +38,8 @@ Ransom: {ransom} gold (you have {gold} gold). Free by day {free_day} regardless.
 def new_game(player_name: str) -> GameState:
     world = new_default_world()
     player = new_player(name=player_name, location_id="village")
+    # A fresh character already knows the ground they're standing on.
+    knowledge.observe_node(player.beliefs, world.nodes[player.location_id], current_day=0)
     return GameState(world=world, player=player, clock=Clock())
 
 

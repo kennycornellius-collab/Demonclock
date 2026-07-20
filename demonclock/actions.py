@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import behavior, setback, sim
+from . import behavior, knowledge, setback, sim
 from .parser import Action, ActionType
 from .state import GameState
 
@@ -53,6 +53,7 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
     behavior.record_location(state.player.behavior, link.to_id)
     tick_log = sim.advance_time(state, link.travel_days)
     node = state.world.nodes[link.to_id]
+    knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)
     message = (
         f"You travel {direction} to {node.name} ({link.travel_days} day(s) pass, "
         f"now day {state.clock.current_day})."
@@ -64,6 +65,7 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
 
 def _resolve_look(state: GameState) -> Outcome:
     node = state.world.nodes[state.player.location_id]
+    knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)
     exits = state.world.open_links_from(state.player.location_id)
     if exits:
         exit_desc = ", ".join(
@@ -90,6 +92,10 @@ def _resolve_inventory(state: GameState) -> Outcome:
 def _resolve_rest(state: GameState) -> Outcome:
     tick_log = sim.advance_time(state, 1)
     player = state.player
+    # The player was physically present at their own node the whole time
+    # they rested, so anything the tick changed there is directly observed
+    # (unlike a remote node, which stays fogged until visited).
+    knowledge.observe_node(player.beliefs, state.world.nodes[player.location_id], state.clock.current_day)
     player.hp = min(player.hp_max, player.hp + player.hp_max // 4)
     player.mana = min(player.mana_max, player.mana + player.mana_max // 4)
     message = (

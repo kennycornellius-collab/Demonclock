@@ -197,6 +197,19 @@ def make_linear_world(occupied_id: str = "a") -> World:
 
 # -- invasion spread (Stage 2, SPEC.md §3) ---------------------------------
 
+def test_apply_event_never_writes_player_belief():
+    # SPEC.md §13: belief is never silently overwritten by truth — only an
+    # explicit act of observation (actions.py) may write player.beliefs.
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    state = make_state(world)  # player starts at "a"
+    event = ScheduledEvent(due_day=0, kind=EventKind.SET_NODE_STATE, payload={"node_id": "b", "state": "occupied"})
+
+    apply_event(state, event)
+
+    assert "b" not in state.player.beliefs
+
+
 def test_invasion_spread_occupies_open_frontier_and_blocks_crossed_link():
     world = make_linear_world()
     state = make_state(world, day=0)

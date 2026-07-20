@@ -1,6 +1,7 @@
 from demonclock import db
 from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
+from demonclock.knowledge import NodeBelief
 from demonclock.player import add_item, new_player
 from demonclock.seed import new_default_world
 from demonclock.skills import Effect, EffectKind, Skill, StatType
@@ -240,6 +241,36 @@ def test_captured_state_defaults_for_a_fresh_player(tmp_path):
     assert loaded_player.captured is False
     assert loaded_player.ransom_cost == 0
     assert loaded_player.free_by_day is None
+
+    conn.close()
+
+
+def test_player_beliefs_round_trip(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    player.beliefs["village"] = NodeBelief(state="peaceful", tags=["trade-hub"], last_seen_day=0)
+    player.beliefs["wilds"] = NodeBelief(state="occupied", prices={"grain": 25}, last_seen_day=20)
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.beliefs == player.beliefs
+
+    conn.close()
+
+
+def test_player_beliefs_default_to_empty_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.beliefs == {}
 
     conn.close()
 

@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import combat, db, knowledge, setback, skills
+from . import combat, db, knowledge, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -21,7 +21,8 @@ MENU = """
 5) Something else...
 6) Skills
 7) Atlas
-8) Save & Quit
+8) Ask around
+9) Save & Quit
 """
 
 # Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
@@ -155,6 +156,21 @@ def handle_atlas(state: GameState) -> None:
         return
 
     print(resolve_fast_travel(state, destination_id).message)
+
+
+def handle_ask_around(state: GameState) -> None:
+    """Pull-primary info gathering (SPEC.md §10): rumors reaching the
+    player's CURRENT node, engine-derived from history.LogEntry, never
+    AI-invented. Distinct from Atlas: a rumor carries its own confidence
+    and may be distorted by distance, whereas Atlas beliefs are only ever
+    written by direct physical observation (knowledge.observe_node)."""
+    heard = rumors.rumors_reaching(state.world, state.player.location_id, state.clock.current_day)
+    if not heard:
+        print("No one here has heard anything worth repeating.")
+        return
+    print("--- Word around here ---")
+    for rumor in heard:
+        print(f"  ({rumor.confidence:.0%} sure) {rumor.text}")
 
 
 def handle_pay_ransom(state: GameState) -> None:
@@ -322,6 +338,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         "5": handle_free_text,
         "6": handle_skills,
         "7": handle_atlas,
+        "8": handle_ask_around,
     }
     captured_handlers = {
         "1": handle_pay_ransom,
@@ -352,7 +369,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
             print(MENU.format(node_name=node.name, day=state.clock.current_day))
             choice = input("> ").strip()
 
-            if choice == "8":
+            if choice == "9":
                 db.save_game(conn, state.world, state.player, state.clock)
                 print("Saved. Farewell.")
                 break

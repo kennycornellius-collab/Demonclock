@@ -24,8 +24,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from .state import GameState
+if TYPE_CHECKING:
+    from .state import GameState
 
 
 class RequirementKind(str, Enum):

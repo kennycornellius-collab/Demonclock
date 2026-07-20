@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS event_log (
     data TEXT NOT NULL   -- JSON-encoded LogEntry.to_dict() (SPEC.md §9, append-only)
 );
 
+CREATE TABLE IF NOT EXISTS content_pool (
+    sort_order INTEGER NOT NULL,
+    data TEXT NOT NULL   -- JSON-encoded GeneratedItem.to_dict() (SPEC.md §7/§8)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -125,6 +130,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM scheduled_events")
     conn.execute("DELETE FROM player_beliefs")
     conn.execute("DELETE FROM event_log")
+    conn.execute("DELETE FROM content_pool")
 
     for node in world.nodes.values():
         conn.execute(
@@ -209,6 +215,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO event_log (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(entry.to_dict())),
         )
+    for sort_order, item in enumerate(world.content_pool):
+        conn.execute(
+            "INSERT INTO content_pool (sort_order, data) VALUES (?, ?)",
+            (sort_order, json.dumps(item.to_dict())),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -232,6 +243,7 @@ def load_game(conn: sqlite3.Connection):
     from .history import LogEntry
     from .knowledge import NodeBelief
     from .models import InventoryItem, Link, Node, Player
+    from .pool import GeneratedItem
     from .skills import Skill
     from .world import World
 
@@ -259,6 +271,10 @@ def load_game(conn: sqlite3.Connection):
     world.event_log = [
         LogEntry.from_dict(json.loads(r[0]))
         for r in conn.execute("SELECT data FROM event_log ORDER BY sort_order")
+    ]
+    world.content_pool = [
+        GeneratedItem.from_dict(json.loads(r[0]))
+        for r in conn.execute("SELECT data FROM content_pool ORDER BY sort_order")
     ]
 
     prow = conn.execute(

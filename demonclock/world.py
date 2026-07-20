@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .events import ScheduledEvent
 from .history import LogEntry
 from .models import OPPOSITE_DIRECTION, Link, Node
+from .pool import GeneratedItem
 
 
 class WorldError(ValueError):
@@ -32,6 +33,11 @@ class World:
         # Append-only history log (SPEC.md §9) — grows forever, only ever
         # appended to via history.record, never pruned like scheduled_events.
         self.event_log: list[LogEntry] = []
+        # Generated-content pool (SPEC.md §7/§8) — mutated via pool.py's
+        # commit_or_repair (append) and pull (pop). Nothing writes to this
+        # yet (Step 5); the list exists now so persistence is already
+        # correct once a real generator does.
+        self.content_pool: list[GeneratedItem] = []
 
     # -- construction --------------------------------------------------
 

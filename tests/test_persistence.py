@@ -1,9 +1,11 @@
 from demonclock import db
+from demonclock.canon import PreconditionManifest, Requirement, RequirementKind
 from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.history import LogEntry
 from demonclock.knowledge import NodeBelief
 from demonclock.player import add_item, new_player
+from demonclock.pool import GeneratedItem
 from demonclock.seed import new_default_world
 from demonclock.skills import Effect, EffectKind, Skill, StatType
 
@@ -306,6 +308,46 @@ def test_event_log_defaults_to_empty_for_a_fresh_world(tmp_path):
     loaded_world, _, _ = db.load_game(conn)
 
     assert loaded_world.event_log == []
+
+    conn.close()
+
+
+def test_content_pool_round_trips_in_order(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    world.content_pool = [
+        GeneratedItem(
+            id="quest1", payload={"title": "Lost Caravan"},
+            manifest=PreconditionManifest([Requirement(RequirementKind.NODE_STATE, {"node_id": "market", "state": "peaceful"})]),
+        ),
+        GeneratedItem(
+            id="quest2", payload={"title": "The Old Well"},
+            manifest=PreconditionManifest([Requirement(RequirementKind.PLAYER_GOLD_AT_LEAST, {"amount": 5})]),
+        ),
+    ]
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.content_pool == world.content_pool
+
+    conn.close()
+
+
+def test_content_pool_defaults_to_empty_for_a_fresh_world(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.content_pool == []
 
     conn.close()
 

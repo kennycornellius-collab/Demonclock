@@ -85,3 +85,9 @@ class Player:
     # Player belief layer (SPEC.md §10): node_id -> last-observed snapshot.
     # Written ONLY by knowledge.observe_node — never by the world-sim tick.
     beliefs: dict[str, NodeBelief] = field(default_factory=dict)
+    # Step 6 Chunk B: quests the player accepted from the content pool
+    # (SPEC §7/§8) via game.handle_quests. Each entry is a flattened
+    # {"id": ..., **payload} dict — the manifest is deliberately dropped,
+    # since an accepted quest is never re-validated here (completion/
+    # turn-in tracking is explicitly a future step, not this one).
+    accepted_quests: list[dict] = field(default_factory=list)

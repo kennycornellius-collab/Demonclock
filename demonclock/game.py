@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import combat, db, knowledge, rumors, setback, skills
+from . import combat, db, knowledge, pool, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -24,7 +24,8 @@ MENU = """
 6) Skills
 7) Atlas
 8) Ask around
-9) Save & Quit
+9) Quests
+10) Save & Quit
 """
 
 # Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
@@ -118,14 +119,6 @@ def handle_atlas(state: GameState) -> None:
     lists what the player BELIEVES about each known node — last-seen state
     and day, not live world truth — then offers to walk a full route there
     in one time-costed jump."""
-    # TEMPORARY debug line (Step 5 Chunk C): the content pool has no real
-    # player-facing surface yet — that's Step 6's newspaper/quest-log job.
-    # This is just enough to manually confirm generated quests are actually
-    # landing in the pool during a live playtest; remove once Step 6 lands.
-    pool_size = len(state.world.content_pool)
-    if pool_size:
-        print(f"(debug: content pool has {pool_size} item(s) pending)")
-
     beliefs = state.player.beliefs
     if not beliefs:
         print("You don't know of anywhere yet.")
@@ -181,6 +174,43 @@ def handle_ask_around(state: GameState) -> None:
     print("--- Word around here ---")
     for rumor in heard:
         print(f"  ({rumor.confidence:.0%} sure) {rumor.text}")
+
+
+def handle_quests(state: GameState) -> None:
+    """Step 6 Chunk B: the first real player-facing surface for content
+    generation's output (SPEC.md §7 — items are "written to a content pool
+    the daytime loop pulls from," previously true only in the abstract).
+    Deliberately scoped to pull + display + accept ONLY — completion/
+    turn-in/reward-granting needs its own design (how does the engine know
+    an objective was met?) and is an explicit future step, not this one."""
+    accepted = state.player.accepted_quests
+    if accepted:
+        print("--- Accepted quests ---")
+        for quest in accepted:
+            print(f"  {quest.get('title', quest['id'])} — reward {quest.get('reward_gold', 0)} gold")
+    else:
+        print("You haven't accepted any quests yet.")
+
+    item = pool.pull(state, state.world.content_pool)
+    if item is None:
+        print("No new leads right now.")
+        return
+
+    print("--- A new lead ---")
+    print(f"  {item.payload.get('title', item.id)}")
+    print(f"  {item.payload.get('description', '')}")
+    print(f"  Reward: {item.payload.get('reward_gold', 0)} gold")
+
+    choice = input("Accept this quest? (y/N) ").strip().lower()
+    if choice == "y":
+        state.player.accepted_quests.append({"id": item.id, **item.payload})
+        print("Quest accepted.")
+    else:
+        # Deliberately NOT re-queued (SPEC.md §11: start rough, calibrate
+        # by feel) — a declined offer disappearing rather than going back
+        # into the pool for a later pull is the simplest behavior for this
+        # chunk; revisit if this ever reads as too punishing in play.
+        print("You let it go.")
 
 
 def handle_pay_ransom(state: GameState) -> None:
@@ -356,6 +386,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         "6": handle_skills,
         "7": handle_atlas,
         "8": handle_ask_around,
+        "9": handle_quests,
     }
     captured_handlers = {
         "1": handle_pay_ransom,
@@ -386,7 +417,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
             print(MENU.format(node_name=node.name, day=state.clock.current_day))
             choice = input("> ").strip()
 
-            if choice == "9":
+            if choice == "10":
                 db.save_game(conn, state.world, state.player, state.clock)
                 print("Saved. Farewell.")
                 break

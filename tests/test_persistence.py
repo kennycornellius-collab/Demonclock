@@ -352,6 +352,40 @@ def test_content_pool_defaults_to_empty_for_a_fresh_world(tmp_path):
     conn.close()
 
 
+def test_accepted_quests_round_trip_in_order(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    player.accepted_quests = [
+        {"id": "quest1", "title": "Lost Caravan", "description": "Find it.", "reward_gold": 10},
+        {"id": "quest2", "title": "The Old Well", "description": "Clean it.", "reward_gold": 5},
+    ]
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.accepted_quests == player.accepted_quests
+
+    conn.close()
+
+
+def test_accepted_quests_default_to_empty_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.accepted_quests == []
+
+    conn.close()
+
+
 def test_save_is_a_full_overwrite_not_an_accumulation(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

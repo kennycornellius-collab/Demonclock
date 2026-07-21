@@ -92,6 +92,11 @@ CREATE TABLE IF NOT EXISTS content_pool (
     data TEXT NOT NULL   -- JSON-encoded GeneratedItem.to_dict() (SPEC.md §7/§8)
 );
 
+CREATE TABLE IF NOT EXISTS accepted_quests (
+    sort_order INTEGER NOT NULL,
+    data TEXT NOT NULL   -- JSON dict: flattened {"id": ..., **payload} (Step 6 Chunk B)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -131,6 +136,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM player_beliefs")
     conn.execute("DELETE FROM event_log")
     conn.execute("DELETE FROM content_pool")
+    conn.execute("DELETE FROM accepted_quests")
 
     for node in world.nodes.values():
         conn.execute(
@@ -220,6 +226,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO content_pool (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(item.to_dict())),
         )
+    for sort_order, quest in enumerate(player.accepted_quests):
+        conn.execute(
+            "INSERT INTO accepted_quests (sort_order, data) VALUES (?, ?)",
+            (sort_order, json.dumps(quest)),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -276,6 +287,10 @@ def load_game(conn: sqlite3.Connection):
         GeneratedItem.from_dict(json.loads(r[0]))
         for r in conn.execute("SELECT data FROM content_pool ORDER BY sort_order")
     ]
+    accepted_quests = [
+        json.loads(r[0])
+        for r in conn.execute("SELECT data FROM accepted_quests ORDER BY sort_order")
+    ]
 
     prow = conn.execute(
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
@@ -308,7 +323,7 @@ def load_game(conn: sqlite3.Connection):
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
-        beliefs=beliefs,
+        beliefs=beliefs, accepted_quests=accepted_quests,
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

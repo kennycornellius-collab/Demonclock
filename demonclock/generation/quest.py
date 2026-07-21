@@ -29,7 +29,13 @@ SYSTEM_PROMPT = (
     f"Every requirement's `kind` MUST be one of: {_REQUIREMENT_KINDS}. "
     "Reference entities ONLY by id, never by name, and only ids that "
     "actually appear in the situation/context you were given -- never "
-    "invent a new entity."
+    "invent a new entity in the manifest. If completing this quest would "
+    "plausibly need a place that doesn't exist on the map yet (e.g. an "
+    "abandoned mine, a smuggler's cove), set needs_new_place to true and "
+    "place_hint to a short plain-language description of it -- do NOT "
+    "invent that place's id yourself; a separate agent will name and place "
+    "it on the map. Leave needs_new_place false for an ordinary quest set at "
+    "an existing node."
 )
 
 QUEST_SCHEMA = {
@@ -39,6 +45,8 @@ QUEST_SCHEMA = {
         "title": {"type": "string"},
         "description": {"type": "string"},
         "reward_gold": {"type": "integer"},
+        "needs_new_place": {"type": "boolean"},
+        "place_hint": {"type": "string"},
         "manifest": {
             "type": "object",
             "properties": {

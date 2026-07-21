@@ -7,6 +7,7 @@ from demonclock.events import EventKind, ScheduledEvent
 from demonclock.generation.context import build_batch_context
 from demonclock.generation.director import INTENT_SCHEMA, DirectorIntent, run_director
 from demonclock.generation.pipeline import run_batch
+from demonclock.generation.places import NEW_PLACE_SCHEMA, NewPlace, materialize, run_places
 from demonclock.generation.quest import QUEST_SCHEMA, run_quest, run_quest_repair
 from demonclock.generation.story import SITUATION_SCHEMA, Situation, run_story
 from demonclock.llm.config import GenerationConfig, ProviderSpec
@@ -49,24 +50,46 @@ def quest_dict(quest_id: str = "quest1", node_id: str = "village", required_stat
     }
 
 
+def quest_dict_needing_new_place(quest_id: str = "quest1", place_hint: str = "an abandoned mine") -> dict:
+    data = quest_dict(quest_id)
+    data["needs_new_place"] = True
+    data["place_hint"] = place_hint
+    return data
+
+
+def new_place_dict(place_id: str = "abandoned_mine", direction: str = "east", travel_days: int = 2) -> dict:
+    return {
+        "id": place_id, "name": "Abandoned Mine", "type": "wilds",
+        "direction": direction, "travel_days": travel_days,
+    }
+
+
 def make_full_registry(
     director_responses: list[object],
     story_responses: list[object],
     quest_responses: list[object],
+    places_responses: list[object] | None = None,
 ) -> LLMRegistry:
-    """Director/Story/Quest each get their OWN mock client (distinct
+    """Director/Story/Quest/Places each get their OWN mock client (distinct
     provider names) so a test can queue exactly the sequence of responses
-    each role's calls should consume, in call order."""
-    config = GenerationConfig(roles={
+    each role's calls should consume, in call order. `places_responses` is
+    only wired in (as a configured "places" role) when given -- omitting it
+    matches a registry with no places provider configured at all, which
+    Chunk C's tests already rely on to prove Chunk D is purely additive."""
+    roles = {
         "director": [ProviderSpec(provider="director_mock")],
         "story": [ProviderSpec(provider="story_mock")],
         "quest": [ProviderSpec(provider="quest_mock")],
-    })
-    return LLMRegistry(config, extra_clients={
+    }
+    extra_clients = {
         "director_mock": MockClient(responses=director_responses, name="director_mock"),
         "story_mock": MockClient(responses=story_responses, name="story_mock"),
         "quest_mock": MockClient(responses=quest_responses, name="quest_mock"),
-    })
+    }
+    if places_responses is not None:
+        roles["places"] = [ProviderSpec(provider="places_mock")]
+        extra_clients["places_mock"] = MockClient(responses=places_responses, name="places_mock")
+    return LLMRegistry(GenerationConfig(roles=roles), extra_clients=extra_clients)
 
 
 def make_world() -> World:
@@ -305,3 +328,114 @@ def test_run_batch_still_returns_intent_when_quest_role_is_unconfigured():
 
     assert intent == DirectorIntent.from_dict(GOOD_INTENT)
     assert state.world.content_pool == []
+
+
+# -- Places agent (Chunk D) -------------------------------------------------
+
+def test_run_places_parses_a_well_formed_new_place():
+    registry = make_full_registry([], [], [], places_responses=[new_place_dict()])
+    state = make_state(registry)
+    situation = Situation(id="sit1", title="t", description="d", node_id="village", stream="responsive")
+
+    new_place = run_places(registry, build_batch_context(state), situation, "an abandoned mine")
+
+    assert new_place == NewPlace(id="abandoned_mine", name="Abandoned Mine", type="wilds", direction="east", travel_days=2)
+
+
+def test_new_place_schema_requires_all_five_fields():
+    assert set(NEW_PLACE_SCHEMA["required"]) == {"id", "name", "type", "direction", "travel_days"}
+
+
+def test_materialize_adds_a_bidirectional_link_with_the_proposed_travel_days():
+    state = make_state()
+    new_place = NewPlace(id="abandoned_mine", name="Abandoned Mine", type="wilds", direction="east", travel_days=2)
+
+    ok = materialize(state, "village", new_place)
+
+    assert ok is True
+    assert state.world.nodes["abandoned_mine"].name == "Abandoned Mine"
+    forward = state.world.get_link("village", "abandoned_mine")
+    reverse = state.world.get_link("abandoned_mine", "village")
+    assert forward.travel_days == 2
+    assert reverse is not None  # bidirectional-by-construction (SPEC.md §3)
+    assert reverse.direction == "west"  # the known opposite of "east"
+
+
+def test_materialize_rejects_an_unrecognized_direction_and_rolls_back_the_node():
+    state = make_state()
+    new_place = NewPlace(id="floating_isle", name="Floating Isle", type="wilds", direction="northeast", travel_days=2)
+
+    ok = materialize(state, "village", new_place)
+
+    assert ok is False
+    assert "floating_isle" not in state.world.nodes  # rolled back, not left orphaned
+
+
+def test_materialize_rejects_a_travel_days_of_zero():
+    state = make_state()
+    new_place = NewPlace(id="too_close", name="Too Close", type="wilds", direction="east", travel_days=0)
+
+    ok = materialize(state, "village", new_place)
+
+    assert ok is False
+    assert "too_close" not in state.world.nodes
+
+
+def test_materialize_refuses_to_overwrite_an_existing_node_id():
+    state = make_state()
+    new_place = NewPlace(id="market", name="A Different Market", type="wilds", direction="east", travel_days=1)
+
+    ok = materialize(state, "village", new_place)
+
+    assert ok is False
+    assert state.world.nodes["market"].name == "Millhaven Market"  # untouched
+
+
+# -- pipeline.run_batch: Places extends the graph only when asked (Chunk D) -
+
+def test_run_batch_materializes_a_new_place_when_a_quest_asks_for_one():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict_needing_new_place("quest_responsive"), quest_dict("quest_world")],
+        places_responses=[new_place_dict()],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert "abandoned_mine" in state.world.nodes
+    assert state.world.get_link("village", "abandoned_mine") is not None
+    # the quest itself still commits regardless of the new place
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+
+
+def test_run_batch_never_calls_places_for_an_ordinary_quest():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+        places_responses=[new_place_dict()],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    places_client = registry._explicit_clients["places_mock"]
+    assert places_client.call_count == 0  # never asked -- neither quest needed a new place
+
+
+def test_run_batch_commits_the_quest_even_when_places_generation_fails():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict_needing_new_place("quest_responsive"), quest_dict("quest_world")],
+        places_responses=[],  # empty queue -- the places call fails
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert "abandoned_mine" not in state.world.nodes  # not created
+    # but the quest itself is not held hostage by the missing place
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}

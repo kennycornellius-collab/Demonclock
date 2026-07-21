@@ -10,6 +10,18 @@ Supported keywords: type (object/string/integer/number/boolean/array/null),
 properties, required, items, enum. Anything else in a schema dict is ignored
 rather than rejected, so callers can still document extra hints (e.g.
 "description") without this validator tripping on them.
+
+KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): the
+"integer" check below is stricter than JSON's actual number model — JSON
+itself doesn't distinguish int/float, only Python's parsed representation
+does. This has never been exercised against a REAL Gemini response (only
+hand-built dicts and monkeypatched HTTP responses in tests) — if a live
+call ever serializes an integer-typed field as something `json.loads`
+turns into a Python `float` (e.g. `5.0`), this would reject it as
+"malformed" (triggering the one retry, then a discard) for a reason
+unrelated to the actual content. Revisit if a live Gemini call ever
+produces a spurious `MalformedGenerationError` on an otherwise-sane
+integer field — likely fix is accepting a whole-number float here too.
 """
 from __future__ import annotations
 

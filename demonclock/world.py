@@ -55,7 +55,22 @@ class World:
         one_way: bool = False,
     ) -> Link:
         """Bidirectional-by-construction link (SPEC.md §3). Writes from->to,
-        and unless one_way, atomically writes the reverse to->from too."""
+        and unless one_way, atomically writes the reverse to->from too.
+
+        KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): this
+        enforces "has a known opposite" and "travel_days >= 1" but does NOT
+        check whether `from_id` already has an outgoing link in the same
+        `direction`. Two links sharing a direction from one node are
+        silently both stored; `actions._resolve_move` matches by direction
+        string and always takes the first one found, so the second becomes
+        permanently unreachable via ordinary Move (though still reachable
+        via `shortest_path`/fast-travel, which doesn't key off direction) —
+        with no error anywhere. `generation/places.py`'s `materialize` is a
+        real caller that can trigger this (a proposed direction colliding
+        with the anchor node's existing link) and does not currently guard
+        against it either. Revisit by having `add_link` reject (or
+        `materialize` pre-check) a direction collision at `from_id` before
+        this becomes a live, AI-generated dead end."""
         if from_id not in self.nodes:
             raise WorldError(f"unknown node id: {from_id!r}")
         if to_id not in self.nodes:

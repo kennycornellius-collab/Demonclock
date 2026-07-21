@@ -99,7 +99,20 @@ def rumors_reaching(world: World, node_id: str, current_day: int) -> list[Rumor]
     """Every rumor that has had time to reach `node_id` by `current_day`,
     nearest (most confident, least distorted) first. A node never gets a
     rumor about its own logged events — you'd know that directly, not
-    secondhand (see knowledge.py's belief layer for that channel)."""
+    secondhand (see knowledge.py's belief layer for that channel).
+
+    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): runs a
+    fresh BFS (`_hop_distance`) from EVERY entry in `world.event_log` on
+    every single call, and `world.event_log` is append-only and never
+    pruned (SPEC.md §9) — this function's cost grows with the total game
+    history, not with anything bounded, the same category of problem
+    SPEC.md §0 pillar 5 explicitly warns against for generation ("never
+    let generation reason over the entire accumulated pile"), just applied
+    to a different subsystem here. `game.handle_ask_around` also prints
+    every rumor returned with no cap. Fine for a small hand-seeded world;
+    revisit (a recency cutoff, an index by node, or a display cap) if a
+    long playthrough's event log ever makes "Ask Around" noticeably slow
+    or noisy."""
     rumors: list[Rumor] = []
     for entry in world.event_log:
         if entry.node_id == node_id:

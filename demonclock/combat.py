@@ -252,6 +252,17 @@ def run_combat(
     travel/rest, not intra-day actions. `current_day` is only needed to stamp
     a captured player's guaranteed release day (setback.py) on DEFEAT; it
     defaults to 0 since most tests don't care about the exact day.
+
+    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): the main
+    loop below (`while fighter.hp > 0 and enemy.hp > 0`) has no turn cap or
+    stalemate detection. If neither side can ever land lethal damage (e.g. a
+    heal/shield-only build outpacing a weak enemy's damage), this loop runs
+    forever. Harmless today since `choose_action` is always a human
+    answering `input()` in practice, bounding it implicitly — but there is
+    no engine-level circuit breaker, which would matter the moment
+    `choose_action` is ever driven by a script or a future automated/AI
+    opponent. Revisit by adding a max-round count that forces a draw/flee
+    outcome if reached.
     """
     fighter = Combatant.from_player(player)
     log: list[str] = []

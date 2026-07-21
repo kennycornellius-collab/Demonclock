@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import behavior, knowledge, setback, sim
+from . import behavior, knowledge, newspaper, setback, sim
 from .parser import Action, ActionType
 from .state import GameState
 
@@ -124,6 +124,13 @@ def _resolve_inventory(state: GameState) -> Outcome:
 
 
 def _resolve_rest(state: GameState) -> Outcome:
+    # Captured BEFORE the tick, so the newspaper's "leaked while asleep" diff
+    # (newspaper.leaked_since) has a true before/after pair to compare — Rest
+    # is the only action that shows a newspaper at all (SPEC.md §10 frames it
+    # specifically as "on wake"; Move/fast-travel keep their existing
+    # tick-log narration only).
+    location_id = state.player.location_id
+    day_before = state.clock.current_day
     tick_log = sim.advance_time(state, 1)
     player = state.player
     # The player was physically present at their own node the whole time
@@ -138,6 +145,11 @@ def _resolve_rest(state: GameState) -> Outcome:
     )
     if tick_log:
         message += "\n" + "\n".join(tick_log)
+
+    leaked = newspaper.leaked_since(state.world, location_id, day_before, state.clock.current_day)
+    newspaper_text = newspaper.format_newspaper(leaked)
+    if newspaper_text:
+        message += "\n" + newspaper_text
 
     if player.captured:
         escape_log = setback.check_escape(player, state.clock.current_day)

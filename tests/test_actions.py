@@ -105,6 +105,54 @@ def test_resting_across_a_scheduled_event_fires_it_and_surfaces_narration():
     assert state.world.get_link("village", "market").status == "blocked"
 
 
+def test_rest_with_nothing_new_to_leak_shows_no_newspaper():
+    state = make_state()
+    outcome = resolve(parse("rest"), state)  # day 0 -> 1, nothing logged yet
+    assert "Word reached you while you slept" not in outcome.message
+
+
+def test_resting_across_the_seeded_blizzard_surfaces_it_in_the_newspaper_once():
+    # village is 1 hop from "road" (where the blizzard's BLOCK_LINK is logged,
+    # SPEC.md §10). The blizzard fires day 4, but at that exact moment 0 days
+    # have elapsed since the log entry -- not yet reachable (needs >= 1 hop).
+    # One more rest (day 4 -> 5) crosses the threshold.
+    state = make_state()
+    for _ in range(4):
+        resolve(parse("rest"), state)
+    assert state.clock.current_day == 4
+
+    outcome = resolve(parse("rest"), state)  # day 4 -> 5
+
+    assert "Word reached you while you slept" in outcome.message
+    assert "blizzard" in outcome.message.lower()
+
+
+def test_resting_again_does_not_re_announce_an_already_leaked_rumor():
+    state = make_state()
+    for _ in range(5):
+        resolve(parse("rest"), state)  # day 0 -> 5, blizzard rumor leaks on this last rest
+    assert state.clock.current_day == 5
+
+    outcome = resolve(parse("rest"), state)  # day 5 -> 6, already known
+
+    assert "Word reached you while you slept" not in outcome.message
+
+
+def test_move_never_shows_a_newspaper_even_across_the_same_span():
+    # Regression guard: the newspaper is Rest-only (SPEC.md §10's "on wake"),
+    # never Move/fast-travel, even across a span that would make a rumor
+    # newly reachable if it rested instead (village -> market is 1 day,
+    # crossing the same day-4-to-5 threshold the Rest test above surfaces).
+    state = make_state()
+    for _ in range(4):
+        resolve(parse("rest"), state)
+    assert state.clock.current_day == 4
+
+    outcome = resolve(parse("go east"), state)  # village -> market, day 4 -> 5
+
+    assert "Word reached you while you slept" not in outcome.message
+
+
 def test_move_across_the_seeded_blizzard_blocks_the_pass():
     state = make_state()
     state.player.location_id = "road"

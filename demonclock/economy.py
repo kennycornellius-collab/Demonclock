@@ -52,7 +52,19 @@ def apply_price_shift(state: GameState) -> list[str]:
     """One tick of price drift across every node that has any tracked
     prices. Moves at most PRICE_STEP per good per tick toward a threat-driven
     target — never jumps straight there. Only nodes that actually moved get a
-    narration line (mirrors Stages 1-2's "only narrate real change")."""
+    narration line (mirrors Stages 1-2's "only narrate real change").
+
+    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): only
+    ever actually converges correctly for a good that's in `BASE_PRICE`
+    (currently just "grain"). For any other good, `base = BASE_PRICE.get(
+    good_id, current)` falls back to the node's OWN current price as its
+    "base" — the target then recomputes off that same moving value every
+    tick, so an occupied node's price for an untracked good never
+    stabilizes at a fixed multiple; it drifts upward indefinitely for as
+    long as the node stays occupied, instead of settling like grain does.
+    Revisit once a second tracked good exists — either give every good a
+    real fixed `BASE_PRICE` entry, or anchor the target to the price first
+    observed/seeded rather than the live "current" value."""
     world = state.world
     log: list[str] = []
     for node in world.nodes.values():

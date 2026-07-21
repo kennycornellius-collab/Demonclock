@@ -7,6 +7,8 @@ from . import combat, db, knowledge, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
+from .llm.config import GenerationConfig
+from .llm.registry import LLMRegistry
 from .parser import parse
 from .player import new_player
 from .seed import WILD_ENEMY_BY_NODE, new_default_world
@@ -320,14 +322,20 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
     conn = db.connect(save_path)
     db.init_schema(conn)
 
+    # Step 5: builds a disabled, empty-role registry when no provider key is
+    # configured (e.g. no GEMINI_API_KEY) -- sim._run_batch then no-ops,
+    # exactly like before Step 5 existed. Never fails startup for a missing key.
+    registry = LLMRegistry(GenerationConfig.from_env())
+
     loaded = db.load_game(conn)
     if loaded is not None:
         world, player, clock = loaded
-        state = GameState(world=world, player=player, clock=clock)
+        state = GameState(world=world, player=player, clock=clock, generation=registry)
         print(f"Welcome back, {player.name}. Resuming on day {clock.current_day}.")
     else:
         name = input("Name your character: ").strip() or "Hero"
         state = new_game(name)
+        state.generation = registry
         print(f"A new journey begins, {state.player.name}.")
 
     handlers = {

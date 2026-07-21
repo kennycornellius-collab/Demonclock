@@ -11,11 +11,15 @@ since it has no due-day/reschedule semantics of its own to route through
 `apply_event`. `advance_time` stays the single choke point every elapsed-time
 call routes through.
 
-Zero AI here — pure code (SPEC.md §2's "golden rule": most turns cost zero AI
-calls; the daytime engine tick is one of the free ones). `_run_batch` is a
-no-op placeholder for the future AI batch so the "exactly ONE batch per
-elapsed span, no matter how many days" invariant (SPEC.md §4/§13) is already
-structurally true and tested before the batch is real.
+Zero AI in this module itself — pure code (SPEC.md §2's "golden rule": most
+turns cost zero AI calls; the daytime engine tick is one of the free ones).
+`_run_batch` delegates to `generation.pipeline.run_batch` (Step 5) when
+`state.generation` is a configured, enabled provider registry, and stays a
+no-op otherwise (no key configured — identical to its old placeholder
+behavior). Either way it's still called exactly once per `advance_time` call
+regardless of how many days elapsed (SPEC.md §4/§13's "exactly ONE batch per
+elapsed span" invariant, proven by `test_advance_time_calls_the_batch_placeholder_exactly_once`
+before this function ever had anything real to call, and unchanged since).
 """
 from __future__ import annotations
 
@@ -150,8 +154,16 @@ def tick_day(state: GameState) -> list[str]:
 
 
 def _run_batch(state: GameState) -> None:
-    """Placeholder for the future AI batch (Director -> Story -> Quest ->
-    Places, SPEC.md §4/§7) — deliberately a no-op until that step is built."""
+    """The AI batch (Director -> Story -> Quest -> Places, SPEC.md §4/§7),
+    delegated to generation.pipeline.run_batch (Step 5). Stays a no-op
+    whenever state.generation is unset or disabled (no configured provider)
+    — identical to this function's previous placeholder behavior in an
+    unconfigured environment, so existing saves/tests that never set
+    GameState.generation are completely unaffected."""
+    if state.generation is None or not state.generation.enabled:
+        return
+    from .generation.pipeline import run_batch
+    run_batch(state, state.generation)
 
 
 def advance_time(state: GameState, days: int) -> list[str]:

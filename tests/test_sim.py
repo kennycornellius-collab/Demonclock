@@ -186,6 +186,43 @@ def test_advance_time_calls_the_batch_placeholder_exactly_once(monkeypatch):
     assert len(calls) == 1
 
 
+# -- generation pipeline wiring (Step 5 Chunk B) ---------------------------
+
+def test_run_batch_is_a_noop_with_no_generation_registry():
+    # GameState.generation defaults to None (make_state doesn't set it) --
+    # must behave exactly like it did before Step 5 existed.
+    world = make_world("a")
+    state = make_state(world, day=0)
+    assert state.generation is None
+
+    log = advance_time(state, 3)  # must not raise
+
+    assert state.clock.current_day == 3
+    assert log is not None  # tick narration still flows normally
+
+
+def test_advance_time_calls_the_director_exactly_once_across_a_multiday_span():
+    from demonclock.llm.config import GenerationConfig, ProviderSpec
+    from demonclock.llm.providers.mock import MockClient
+    from demonclock.llm.registry import LLMRegistry
+
+    good_intent = {
+        "responsive_weight": 0.5, "world_driven_weight": 0.5,
+        "pressure_level": 0, "salient_threads": [],
+    }
+    mock_client = MockClient(responses=[good_intent])
+    config = GenerationConfig(roles={"director": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={"mock": mock_client})
+
+    world = make_world("a")
+    state = make_state(world, day=0)
+    state.generation = registry
+
+    advance_time(state, 12)  # many elapsed days -- still exactly one Director call
+
+    assert mock_client.call_count == 1
+
+
 def make_linear_world(occupied_id: str = "a") -> World:
     """a - b - c, all links open; `occupied_id` starts occupied, the rest peaceful."""
     world = make_world("a", "b", "c")

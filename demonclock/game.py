@@ -322,8 +322,9 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
     conn = db.connect(save_path)
     db.init_schema(conn)
 
-    # Step 5: builds a disabled, empty-role registry when no provider key is
-    # configured (e.g. no GEMINI_API_KEY) -- sim._run_batch then no-ops,
+    # Step 5: GEMINI_API_KEY comes from a real env var, or (as a fallback) a
+    # gitignored .env file in the cwd -- see .env.example. Builds a disabled,
+    # empty-role registry when neither is set; sim._run_batch then no-ops,
     # exactly like before Step 5 existed. Never fails startup for a missing key.
     registry = LLMRegistry(GenerationConfig.from_env())
 

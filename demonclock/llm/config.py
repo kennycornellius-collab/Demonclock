@@ -15,6 +15,12 @@ Two decisions locked with the user, encoded here:
 provider (e.g. `GEMINI_API_KEY` isn't set) -- this is what lets
 `sim._run_batch` degrade to today's exact no-op behavior in an unconfigured
 environment, rather than every caller needing its own "is there a key" check.
+
+**API keys are never hardcoded or committed.** `from_env()` reads them from
+the real process environment first; a `.env` file (git-ignored, stdlib-only
+parsing, no `python-dotenv` dependency) is an optional convenience fallback
+for keys the real environment doesn't already have set -- so a real
+`GEMINI_API_KEY` env var always wins over whatever a `.env` file says.
 """
 from __future__ import annotations
 
@@ -31,6 +37,7 @@ ROLES = ("director", "story", "quest", "places", "entity_resolution")
 PROVIDER_API_KEY_ENV = {"gemini": "GEMINI_API_KEY"}
 
 CONFIG_FILE_ENV_VAR = "DEMONCLOCK_LLM_CONFIG"
+DEFAULT_DOTENV_PATH = ".env"
 
 
 @dataclass(frozen=True)
@@ -53,18 +60,25 @@ class GenerationConfig:
         return any(self.roles.get(role) for role in ROLES)
 
     @staticmethod
-    def from_env() -> GenerationConfig:
+    def from_env(dotenv_path: str | None = DEFAULT_DOTENV_PATH) -> GenerationConfig:
         """The default: every role routed to Gemini alone, if (and only if)
-        GEMINI_API_KEY is set -- an unconfigured environment gets an empty,
-        disabled config, identical to today's no-provider behavior. A
-        DEMONCLOCK_LLM_CONFIG JSON file, if set, overrides the per-role
+        a key is available. Looked up per provider as: real process
+        environment variable first, then (only if unset) the matching key in
+        a `.env` file at `dotenv_path` -- so a real env var always wins and a
+        missing/absent `.env` file is simply skipped, never an error. Pass
+        `dotenv_path=None` to skip `.env` lookup entirely (e.g. in tests that
+        need to be independent of whatever `.env` a working directory
+        happens to have).
+
+        A DEMONCLOCK_LLM_CONFIG JSON file, if set, overrides the per-role
         provider chains (e.g. to route "story" to a different provider/model
         once one exists) without any code change; format is
         `{"director": [{"provider": "gemini", "model": "..."}], ...}`."""
+        dotenv_values = _load_dotenv(dotenv_path) if dotenv_path else {}
         api_keys = {
-            provider: os.environ[env_var]
+            provider: os.environ.get(env_var) or dotenv_values.get(env_var)
             for provider, env_var in PROVIDER_API_KEY_ENV.items()
-            if os.environ.get(env_var)
+            if os.environ.get(env_var) or dotenv_values.get(env_var)
         }
 
         config_path = os.environ.get(CONFIG_FILE_ENV_VAR)
@@ -76,6 +90,29 @@ class GenerationConfig:
             roles = {}
 
         return GenerationConfig(roles=roles, api_keys=api_keys)
+
+
+def _load_dotenv(path: str) -> dict[str, str]:
+    """A minimal, stdlib-only `.env` parser (no `python-dotenv` dependency --
+    the project stays zero third-party dependencies). Supports `KEY=VALUE`
+    lines, blank lines, `#` comments, and optionally-quoted values. Returns
+    `{}` (never raises) if the file doesn't exist -- a missing `.env` is a
+    perfectly normal, unconfigured state, same as a missing env var."""
+    if not os.path.isfile(path):
+        return {}
+
+    values: dict[str, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                values[key] = value
+    return values
 
 
 def _load_roles_from_file(path: str) -> dict[str, list[ProviderSpec]]:

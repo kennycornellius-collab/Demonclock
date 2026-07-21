@@ -142,17 +142,22 @@ def test_registry_enabled_reflects_whether_any_role_has_a_provider():
 
 
 # -- GenerationConfig.from_env ---------------------------------------------
+#
+# dotenv_path=None everywhere below: these tests exercise the pure
+# environment-variable path and must stay deterministic regardless of
+# whether a real .env file happens to sit in whatever directory pytest runs
+# from. The .env-specific behavior is tested separately further down.
 
 def test_from_env_is_disabled_with_no_key_and_no_config_file():
     with patch.dict(os.environ, {}, clear=True):
-        config = GenerationConfig.from_env()
+        config = GenerationConfig.from_env(dotenv_path=None)
     assert not config.enabled
     assert config.roles == {}
 
 
 def test_from_env_routes_every_role_to_gemini_when_the_key_is_set():
     with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-        config = GenerationConfig.from_env()
+        config = GenerationConfig.from_env(dotenv_path=None)
     assert config.enabled
     assert config.api_keys["gemini"] == "test-key"
     for role in ("director", "story", "quest", "places", "entity_resolution"):
@@ -167,9 +172,49 @@ def test_from_env_config_file_overrides_the_default_routing(tmp_path):
         {"GEMINI_API_KEY": "test-key", "DEMONCLOCK_LLM_CONFIG": str(config_file)},
         clear=True,
     ):
-        config = GenerationConfig.from_env()
+        config = GenerationConfig.from_env(dotenv_path=None)
     assert config.roles == {"director": [ProviderSpec(provider="gemini", model="custom-model")]}
     assert "story" not in config.roles
+
+
+# -- GenerationConfig.from_env: .env file support --------------------------
+
+def test_from_env_falls_back_to_a_dotenv_file_when_no_real_env_var_is_set(tmp_path):
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text('GEMINI_API_KEY=from-dotenv\n# a comment\n\nIGNORED=1\n')
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = GenerationConfig.from_env(dotenv_path=str(dotenv_file))
+
+    assert config.enabled
+    assert config.api_keys["gemini"] == "from-dotenv"
+
+
+def test_from_env_prefers_a_real_env_var_over_the_dotenv_file(tmp_path):
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text("GEMINI_API_KEY=from-dotenv\n")
+
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "from-real-env"}, clear=True):
+        config = GenerationConfig.from_env(dotenv_path=str(dotenv_file))
+
+    assert config.api_keys["gemini"] == "from-real-env"
+
+
+def test_from_env_handles_a_missing_dotenv_file_gracefully(tmp_path):
+    with patch.dict(os.environ, {}, clear=True):
+        config = GenerationConfig.from_env(dotenv_path=str(tmp_path / "does_not_exist.env"))
+
+    assert not config.enabled
+
+
+def test_from_env_dotenv_values_support_quoted_values(tmp_path):
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text('GEMINI_API_KEY="quoted-value"\n')
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = GenerationConfig.from_env(dotenv_path=str(dotenv_file))
+
+    assert config.api_keys["gemini"] == "quoted-value"
 
 
 # -- GeminiClient: request/response shaping, no real network ---------------

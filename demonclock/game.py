@@ -118,6 +118,14 @@ def handle_atlas(state: GameState) -> None:
     lists what the player BELIEVES about each known node — last-seen state
     and day, not live world truth — then offers to walk a full route there
     in one time-costed jump."""
+    # TEMPORARY debug line (Step 5 Chunk C): the content pool has no real
+    # player-facing surface yet — that's Step 6's newspaper/quest-log job.
+    # This is just enough to manually confirm generated quests are actually
+    # landing in the pool during a live playtest; remove once Step 6 lands.
+    pool_size = len(state.world.content_pool)
+    if pool_size:
+        print(f"(debug: content pool has {pool_size} item(s) pending)")
+
     beliefs = state.player.beliefs
     if not beliefs:
         print("You don't know of anywhere yet.")

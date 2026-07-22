@@ -36,6 +36,13 @@ def new_default_world() -> World:
     world.add_link("village", "road", "north", travel_days=1)
     world.add_link("road", "wilds", "north", travel_days=2)
 
+    # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
+    # wilds is where the invasion originates (see the "occupied" comment
+    # below), so it's also where sim._reveal_demon_king retags the node
+    # "demon_king" once the whole graph has fallen — see boss.py for the
+    # actual encounter, game.handle_interact for the trigger.
+    world.invasion_origin_id = "wilds"
+
     # Demo scheduled events (SPEC.md §12 step 2, Stage 1: timers & scheduled
     # events) — proves the world moves on its own timer (SPEC.md §0 pillar 4)
     # even in a fresh game nobody has touched yet. A blizzard closes the

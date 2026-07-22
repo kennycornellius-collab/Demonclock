@@ -38,6 +38,14 @@ class World:
         # yet (Step 5); the list exists now so persistence is already
         # correct once a real generator does.
         self.content_pool: list[GeneratedItem] = []
+        # Which node the demon-king invasion (sim._apply_invasion_spread)
+        # originates from — set by content (seed.py), never inferred by the
+        # engine. Once the whole graph has fallen, that node is retagged
+        # "demon_king" (see sim._reveal_demon_king), making the boss fight
+        # reachable via game.py's Interact. None means "no invasion origin
+        # configured" — the reveal step is then a no-op, so a minimal/test
+        # world with no invasion content is unaffected.
+        self.invasion_origin_id: str | None = None
 
     # -- construction --------------------------------------------------
 

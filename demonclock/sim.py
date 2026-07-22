@@ -132,7 +132,50 @@ def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]
             due_day=state.clock.current_day + INVASION_SPREAD_INTERVAL_DAYS,
             kind=EventKind.INVASION_SPREAD,
         ))
+    else:
+        log.extend(_reveal_demon_king(state))
     return log
+
+
+def _reveal_demon_king(state: GameState) -> list[str]:
+    """The invasion payoff ("Bosses as situations, not HP checks", SPEC.md
+    §6b/§11.1): once the whole graph has fallen, retag `World.
+    invasion_origin_id`'s node "demon_king" — game.handle_interact checks
+    for that tag to offer the real fight (boss.DEMON_KING_ENCOUNTER).
+    Deliberately NOT auto-triggered: this only makes the fight reachable,
+    per the design conversation's resolved "seek it out" decision — a
+    non-combat playthrough can let the invasion finish and never go there.
+
+    Also reopens every link this same invasion blocked (`block_reason ==
+    "enemy"`) — total conquest otherwise cuts EVERY link in the graph (see
+    `_apply_invasion_spread`'s own crossed-link blocking above), which would
+    leave the demon king physically unreachable via Move/Atlas fast-travel
+    from anywhere the player isn't already standing. Once there's no more
+    territory left to hold, the army has no reason to keep the roads
+    sealed — the fallen realm's roads reopen specifically so the final
+    confrontation is reachable, matching this function's own narration.
+    Unrelated blocks (e.g. a blizzard's `reason="snow"`) are untouched.
+
+    A no-op whenever no origin is configured (`invasion_origin_id is None`,
+    the default for any world seed.py didn't touch, e.g. most test
+    fixtures) — this step is additive content, not a required engine
+    behavior. Fires exactly once: this branch is only reached the one tick
+    the reschedule condition first goes false, and INVASION_SPREAD never
+    fires again afterward (nothing left to reschedule it)."""
+    world = state.world
+    origin_id = world.invasion_origin_id
+    if origin_id is None or origin_id not in world.nodes:
+        return []
+    node = world.nodes[origin_id]
+    node.tags.append("demon_king")
+
+    for link in world.all_links():
+        if link.status == "blocked" and link.block_reason == "enemy":
+            world.unblock_link(link.from_id, link.to_id)
+
+    description = f"The Demon King now holds court at {node.name} — the roads lie open, and the way to him with them."
+    history.record(world.event_log, state.clock.current_day, node.id, EventKind.SET_NODE_STATE, description)
+    return [description]
 
 
 def tick_day(state: GameState) -> list[str]:

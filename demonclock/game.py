@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import combat, db, knowledge, pool, rumors, setback, skills
+from . import boss, combat, db, knowledge, pool, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -39,6 +39,14 @@ Ransom: {ransom} gold (you have {gold} gold). Free by day {free_day} regardless.
 3) Save & Quit
 """
 
+# SPEC.md §11.1: the demon-king fight is the one TRUE, permanent game-over —
+# checked at the top of the main loop, before MENU/CAPTURED_MENU, so a
+# resolved fight never falls through to ordinary play again.
+GAME_OVER_MESSAGES = {
+    "victory": "*** You have slain the Demon King. The invasion ends here. Your story is done. ***",
+    "defeat": "*** You have fallen before the Demon King. There is no rising from this one. Your story ends here. ***",
+}
+
 
 def new_game(player_name: str) -> GameState:
     world = new_default_world()
@@ -71,6 +79,15 @@ def handle_move(state: GameState) -> None:
 
 
 def handle_interact(state: GameState) -> None:
+    # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
+    # once sim._reveal_demon_king has tagged this node (the invasion has
+    # fully conquered the graph), Interact here means the real fight, not
+    # the ordinary wild-foe check below.
+    node = state.world.nodes[state.player.location_id]
+    if "demon_king" in node.tags:
+        _handle_demon_king(state)
+        return
+
     # NPCs at a node would be listed here via a DB query, no AI (SPEC.md §6).
     # A recurring wild foe on "dangerous" nodes is wired in for this combat
     # stage (see seed.WILD_ENEMY_BY_NODE) — real NPCs/encounters are content
@@ -104,6 +121,66 @@ def handle_interact(state: GameState) -> None:
     _result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
+
+
+def _handle_demon_king(state: GameState) -> None:
+    """The real fight (boss.DEMON_KING_ENCOUNTER). Unlike handle_interact's
+    ordinary wild-foe branch, a loss here is permanent (SPEC.md §11.1) — the
+    epilogue itself is printed by run()'s game_over check next loop, not
+    here, so it only ever prints once regardless of how this function
+    returns."""
+    print(
+        "The Demon King awaits at the heart of the fallen realm. This is the real "
+        "fight — there is no ransom, no timed escape, if you fall here."
+    )
+    choice = input("1) Confront the Demon King  2) Leave\n> ").strip()
+    if choice != "1":
+        return
+
+    def choose_action(
+        fighter: combat.Combatant, boss_combatant: combat.Combatant,
+        active_adds: list[combat.Combatant], options: list,
+    ):
+        targets = [boss_combatant, *active_adds]
+        print(f"Your HP: {fighter.hp}/{fighter.hp_max} MANA: {fighter.mana}/{fighter.mana_max}")
+        warded = " (warded — cannot be harmed yet)" if boss_combatant.immune else ""
+        print(f"  {boss_combatant.name} HP: {boss_combatant.hp}/{boss_combatant.hp_max}{warded}")
+        for add in active_adds:
+            print(f"  {add.name} HP: {add.hp}/{add.hp_max}")
+        for i, skill in enumerate(options, start=1):
+            print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
+        print(f"  {len(options) + 1}) Flee")
+        sub_choice = input("> ").strip()
+        if sub_choice == str(len(options) + 1):
+            return None
+        try:
+            skill = options[int(sub_choice) - 1]
+        except (ValueError, IndexError):
+            skill = options[0]  # invalid input defaults to the first (Basic Attack)
+
+        target = targets[0]
+        if len(targets) > 1:
+            print("Target:")
+            for i, candidate in enumerate(targets, start=1):
+                print(f"  {i}) {candidate.name}")
+            target_choice = input("> ").strip()
+            try:
+                target = targets[int(target_choice) - 1]
+            except (ValueError, IndexError):
+                pass  # invalid input defaults to the boss (targets[0])
+        return skill, target
+
+    result, log = boss.run_encounter(state.player, boss.DEMON_KING_ENCOUNTER, choose_action)
+    for line in log:
+        print(line)
+
+    if result is boss.EncounterResult.VICTORY:
+        state.player.game_over = "victory"
+    elif result is boss.EncounterResult.DEFEAT:
+        state.player.game_over = "defeat"
+    # FLED: nothing to record — the Demon King remains, cultists and all,
+    # for a later attempt (boss.run_encounter never mutates the stored
+    # Encounter, so the fight resets to its starting state every attempt).
 
 
 def handle_inventory(state: GameState) -> None:
@@ -406,6 +483,10 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
     try:
         while True:
             player = state.player
+            if player.game_over:
+                print(GAME_OVER_MESSAGES.get(player.game_over, "*** Game over. ***"))
+                db.save_game(conn, state.world, state.player, state.clock)
+                break
             if player.captured:
                 print(CAPTURED_MENU.format(
                     day=state.clock.current_day, ransom=player.ransom_cost,

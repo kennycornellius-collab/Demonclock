@@ -393,6 +393,58 @@ def test_invasion_spread_stops_rescheduling_once_the_whole_graph_falls():
     assert world.scheduled_events == []  # nothing left to conquer, chain ends
 
 
+def test_invasion_completion_reveals_the_demon_king_at_the_origin_node():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    world.nodes["a"].state = "occupied"
+    world.invasion_origin_id = "a"
+    state = make_state(world, day=0)
+
+    log = apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert "demon_king" in world.nodes["a"].tags
+    assert "demon_king" not in world.nodes["b"].tags  # only the origin, not every conquered node
+    assert any("Demon King" in line for line in log)
+    assert any("Demon King" in entry.description for entry in world.event_log)
+    # The link this same tick's conquest just blocked is reopened again —
+    # otherwise the boss would be unreachable via Move/Atlas fast-travel.
+    assert world.get_link("a", "b").status == "open"
+    assert world.get_link("b", "a").status == "open"
+
+
+def test_invasion_completion_leaves_unrelated_blocks_alone():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    world.block_link("a", "b", reason="snow")  # an unrelated, non-invasion block
+    world.nodes["a"].state = "occupied"
+    world.nodes["b"].state = "occupied"  # whole graph already conquered
+    world.invasion_origin_id = "a"
+    state = make_state(world, day=0)
+
+    apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert "demon_king" in world.nodes["a"].tags
+    # only "enemy"-reason blocks get reopened by the reveal -- a genuinely
+    # unrelated block (a blizzard, say) is left exactly as it was.
+    assert world.get_link("a", "b").status == "blocked"
+    assert world.get_link("a", "b").block_reason == "snow"
+
+
+def test_invasion_completion_is_a_no_op_without_a_configured_origin():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    world.nodes["a"].state = "occupied"
+    # invasion_origin_id left at its default (None) — most hand-built test
+    # worlds never set it, and that must stay harmless.
+    state = make_state(world, day=0)
+
+    log = apply_event(state, ScheduledEvent(due_day=0, kind=EventKind.INVASION_SPREAD))
+
+    assert world.nodes["b"].tags == []
+    assert not any("demon_king" in node.tags for node in world.nodes.values())
+    assert not any("Demon King" in line for line in log)
+
+
 def test_invasion_spread_is_deterministic():
     def make_matchup():
         return make_state(make_linear_world(), day=0)
@@ -412,12 +464,20 @@ def test_seeded_invasion_conquers_the_whole_starter_graph_on_schedule():
     advance_time(state, 26)  # past day 25, the last scheduled conquest
 
     assert all(node.state == "occupied" for node in world.nodes.values())
-    assert world.get_link("wilds", "road").block_reason == "enemy"  # invasion re-blocked it post-blizzard
-    assert world.get_link("road", "village").status == "blocked"
-    assert world.get_link("village", "market").status == "blocked"
     # blizzard pair + invasion chain fully resolved — only the perpetual
     # PRICE_SHIFT chain (Stage 3) is still queued, which never stops
     assert [e.kind for e in world.scheduled_events] == [EventKind.PRICE_SHIFT]
+    # The invasion payoff (SPEC.md §11.1): the boss fight is now reachable
+    # at wilds, the seeded invasion's origin — see seed.py/sim._reveal_demon_king.
+    # _reveal_demon_king ALSO reopens every link this same invasion cut (see
+    # its docstring) specifically so this stays true — total conquest would
+    # otherwise leave every link blocked and the boss physically unreachable
+    # from anywhere the player isn't already standing.
+    assert "demon_king" in world.nodes["wilds"].tags
+    assert world.get_link("wilds", "road").status == "open"
+    assert world.get_link("road", "village").status == "open"
+    assert world.get_link("village", "market").status == "open"
+    assert state.world.shortest_path("village", "wilds") is not None
 
 
 # -- price shifts (Stage 3, SPEC.md §4/§10) --------------------------------

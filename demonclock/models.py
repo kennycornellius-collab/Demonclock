@@ -91,3 +91,9 @@ class Player:
     # since an accepted quest is never re-validated here (completion/
     # turn-in tracking is explicitly a future step, not this one).
     accepted_quests: list[dict] = field(default_factory=list)
+    # SPEC §11.1: true, PERMANENT game-over — reserved for the demon king /
+    # designated bosses only (see boss.py), unlike `captured` above, which
+    # is always recoverable. None while ongoing; "victory" or "defeat" once
+    # boss.run_encounter resolves the demon-king fight (game.py owns the
+    # actual ending flow).
+    game_over: str | None = None

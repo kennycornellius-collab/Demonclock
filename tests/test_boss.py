@@ -1,6 +1,7 @@
 import pytest
 
 from demonclock.boss import (
+    DEMON_KING_ENCOUNTER,
     Encounter,
     EncounterError,
     EncounterResult,
@@ -257,3 +258,40 @@ def test_choose_action_can_target_an_add_distinct_from_the_boss():
 
     assert result is EncounterResult.VICTORY
     assert seen_add_hp["before"] == 1  # confirms the callback really saw the add's own state
+
+
+# --- the real demon-king encounter (Chunk B) --------------------------------
+
+def test_demon_king_encounter_is_well_formed():
+    validate_encounter(DEMON_KING_ENCOUNTER)  # does not raise
+
+
+def test_demon_king_encounter_is_winnable_by_a_strong_player():
+    player = make_player(strength=200, defense=100, agility=100, hp=1000, hp_max=1000)
+
+    result, log = run_encounter(player, DEMON_KING_ENCOUNTER, choose_action=attack_adds_then_boss)
+
+    assert result is EncounterResult.VICTORY
+    assert any("Demon King" in line for line in log)
+
+
+def test_demon_king_encounter_is_lethal_to_a_weak_player():
+    player = make_player(strength=1, defense=0, agility=1, hp=5, hp_max=5)
+
+    result, log = run_encounter(player, DEMON_KING_ENCOUNTER, choose_action=attack_adds_then_boss)
+
+    assert result is EncounterResult.DEFEAT
+    # boss.py never touches this -- assigning it is game.py's job (Chunk B's
+    # wiring), so it must still be unset here.
+    assert player.game_over is None
+
+
+def test_demon_king_encounter_is_not_mutated_by_playing_it():
+    original_boss_hp = DEMON_KING_ENCOUNTER.boss.hp
+    original_add_hp = DEMON_KING_ENCOUNTER.phases[0].adds[0].hp
+    player = make_player(strength=200, defense=100, agility=100, hp=1000, hp_max=1000)
+
+    run_encounter(player, DEMON_KING_ENCOUNTER, choose_action=attack_adds_then_boss)
+
+    assert DEMON_KING_ENCOUNTER.boss.hp == original_boss_hp
+    assert DEMON_KING_ENCOUNTER.phases[0].adds[0].hp == original_add_hp

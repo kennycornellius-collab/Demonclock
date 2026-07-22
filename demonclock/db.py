@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS player (
     recent_locations TEXT NOT NULL DEFAULT '[]',  -- JSON list (BehaviorProfile, SPEC §5)
     captured INTEGER NOT NULL DEFAULT 0,
     ransom_cost INTEGER NOT NULL DEFAULT 0,
-    free_by_day INTEGER  -- NULL whenever not captured (setback.py, SPEC §11.1)
+    free_by_day INTEGER,  -- NULL whenever not captured (setback.py, SPEC §11.1)
+    game_over TEXT  -- NULL while ongoing; 'victory'|'defeat' once resolved (boss.py, SPEC §11.1)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -166,8 +167,8 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         "strength, magic, agility, defense, charisma, perception, luck, gold, "
         "creative_mode_used, trade_actions, combat_actions, dialogue_actions, "
         "crafting_actions, last_gold, gold_trend, recent_locations, captured, "
-        "ransom_cost, free_by_day) "
-        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "ransom_cost, free_by_day, game_over) "
+        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -194,6 +195,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             int(player.captured),
             player.ransom_cost,
             player.free_by_day,
+            player.game_over,
         ),
     )
     for item in player.inventory:
@@ -242,6 +244,14 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (SAVE_VERSION,),
     )
+    # JSON-encoded so `None` (no invasion content configured — most test
+    # worlds) round-trips distinctly from the string "wilds" (world.py,
+    # SPEC.md §11.1's boss build item).
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('invasion_origin_id', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (json.dumps(world.invasion_origin_id),),
+    )
     conn.commit()
 
 
@@ -287,6 +297,8 @@ def load_game(conn: sqlite3.Connection):
         GeneratedItem.from_dict(json.loads(r[0]))
         for r in conn.execute("SELECT data FROM content_pool ORDER BY sort_order")
     ]
+    origin_row = conn.execute("SELECT value FROM meta WHERE key = 'invasion_origin_id'").fetchone()
+    world.invasion_origin_id = json.loads(origin_row[0]) if origin_row else None
     accepted_quests = [
         json.loads(r[0])
         for r in conn.execute("SELECT data FROM accepted_quests ORDER BY sort_order")
@@ -296,7 +308,8 @@ def load_game(conn: sqlite3.Connection):
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
         "agility, defense, charisma, perception, luck, gold, creative_mode_used, "
         "trade_actions, combat_actions, dialogue_actions, crafting_actions, "
-        "last_gold, gold_trend, recent_locations, captured, ransom_cost, free_by_day "
+        "last_gold, gold_trend, recent_locations, captured, ransom_cost, free_by_day, "
+        "game_over "
         "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
@@ -323,7 +336,7 @@ def load_game(conn: sqlite3.Connection):
         luck=prow[12], gold=prow[13], inventory=inventory, skills=skills,
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
-        beliefs=beliefs, accepted_quests=accepted_quests,
+        beliefs=beliefs, accepted_quests=accepted_quests, game_over=prow[25],
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

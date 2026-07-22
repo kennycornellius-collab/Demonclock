@@ -36,7 +36,7 @@ from enum import Enum
 
 from .combat import BASIC_ATTACK, Combatant, apply_skill, tick_upkeep, usable_skills
 from .models import Player
-from .skills import Skill
+from .skills import Effect, EffectKind, Skill, StatType
 
 
 class PhaseTriggerKind(str, Enum):
@@ -230,3 +230,51 @@ def run_encounter(
         elif _trigger_met(phase.trigger, boss, active_adds, rounds_this_phase):
             phase_index += 1
             enter_phase(phase_index)
+
+
+# The real demon-king fight (Chunk B) — the one Encounter this whole module
+# is scoped to (a deliberate, resolved decision: no speculative multi-boss
+# framework, see CLAUDE.md's build-progress entry for this item). Same
+# "start rough, calibrate by feel" status as every other tuning constant in
+# this codebase (SPEC.md §11) — there's no leveling system yet, so these
+# numbers aren't calibrated against anything but a fresh default Player.
+DEMON_KING_ENCOUNTER = Encounter(
+    id="demon_king",
+    name="the Demon King",
+    boss=Combatant(name="The Demon King", hp=200, hp_max=200, strength=18, agility=12, defense=8, magic=15),
+    phases=[
+        Phase(
+            id="cultist_ward",
+            name="The Cultist Ward",
+            trigger=PhaseTrigger(PhaseTriggerKind.ADDS_CLEARED),
+            adds=[
+                Combatant(name="Bound Cultist", hp=25, hp_max=25, strength=6, agility=9, defense=1),
+                Combatant(name="Bound Cultist", hp=25, hp_max=25, strength=6, agility=9, defense=1),
+            ],
+            boss_immune=True,
+            narrative_beat=(
+                "Two cultists, bound to the Demon King's will, place themselves between "
+                "you and the throne. He watches, untouchable, while they still live."
+            ),
+        ),
+        Phase(
+            id="the_demon_king",
+            name="The Demon King Unbound",
+            trigger=None,
+            boss_immune=False,
+            environment_skills=[
+                Skill(
+                    id="throne_room_dread",
+                    name="the throne room's dread",
+                    description="An oppressive weight presses on you as you fight.",
+                    effects=[Effect(EffectKind.DAMAGE)],
+                    attribute_type=StatType.MAGIC,
+                    base_damage=8,
+                    attribute_multiplier=1.0,
+                    mana_cost=0,
+                ),
+            ],
+            narrative_beat="The last cultist falls. The Demon King rises from his throne.",
+        ),
+    ],
+)

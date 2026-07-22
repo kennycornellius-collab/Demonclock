@@ -402,3 +402,66 @@ def test_save_is_a_full_overwrite_not_an_accumulation(tmp_path):
     assert loaded_clock.current_day == 2
 
     conn.close()
+
+
+def test_game_over_defaults_to_none(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, new_default_world(), player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+    assert loaded_player.game_over is None
+
+    conn.close()
+
+
+def test_game_over_round_trips_victory_and_defeat(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    player = new_player(name="Astra", location_id="village")
+    player.game_over = "victory"
+    db.save_game(conn, new_default_world(), player, Clock())
+    _, loaded_player, _ = db.load_game(conn)
+    assert loaded_player.game_over == "victory"
+
+    player.game_over = "defeat"
+    db.save_game(conn, new_default_world(), player, Clock())
+    _, loaded_player, _ = db.load_game(conn)
+    assert loaded_player.game_over == "defeat"
+
+    conn.close()
+
+
+def test_invasion_origin_id_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()  # seed.py sets this to "wilds"
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+    assert loaded_world.invasion_origin_id == "wilds"
+
+    conn.close()
+
+
+def test_invasion_origin_id_defaults_to_none_when_unset(tmp_path):
+    from demonclock.models import Node
+    from demonclock.world import World
+
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()  # never touched by seed.py -- no invasion content configured
+    world.add_node(Node(id="village", name="Village"))
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+    assert loaded_world.invasion_origin_id is None
+
+    conn.close()

@@ -203,6 +203,16 @@ def handle_quests(state: GameState) -> None:
 
     choice = input("Accept this quest? (y/N) ").strip().lower()
     if choice == "y":
+        # KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed):
+        # quest._item_from_dict deliberately leaves "id" INSIDE item.payload
+        # too (it only strips "manifest"), so {"id": item.id, **item.payload}
+        # silently lets item.payload["id"] win over item.id if they were
+        # ever to diverge -- Python dict-literal merge order means a later
+        # unpacked key always overwrites an earlier literal one of the same
+        # name. Currently harmless (both always trace back to the same
+        # `data["id"]`), but a latent fragility worth removing (e.g.
+        # `{**item.payload, "id": item.id}`, literal last) if this code
+        # path is ever touched again.
         state.player.accepted_quests.append({"id": item.id, **item.payload})
         print("Quest accepted.")
     else:

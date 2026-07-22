@@ -109,10 +109,14 @@ def rumors_reaching(world: World, node_id: str, current_day: int) -> list[Rumor]
     SPEC.md §0 pillar 5 explicitly warns against for generation ("never
     let generation reason over the entire accumulated pile"), just applied
     to a different subsystem here. `game.handle_ask_around` also prints
-    every rumor returned with no cap. Fine for a small hand-seeded world;
-    revisit (a recency cutoff, an index by node, or a display cap) if a
-    long playthrough's event log ever makes "Ask Around" noticeably slow
-    or noisy."""
+    every rumor returned with no cap. UPDATE (Step 6 Chunk A): `newspaper.
+    leaked_since` now calls this function TWICE per Rest (a before/after
+    snapshot), so this cost is paid twice on every single night's sleep,
+    not just once per manual "Ask Around" — the same underlying gap, now
+    with a second, more frequent caller. Fine for a small hand-seeded
+    world; revisit (a recency cutoff, an index by node, or a display cap)
+    if a long playthrough's event log ever makes Rest or "Ask Around"
+    noticeably slow or noisy."""
     rumors: list[Rumor] = []
     for entry in world.event_log:
         if entry.node_id == node_id:

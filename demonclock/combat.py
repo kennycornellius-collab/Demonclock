@@ -78,6 +78,11 @@ class Combatant:
     dot_turns_remaining: int = 0
     modifiers: list[StatModifier] = field(default_factory=list)
     cooldowns: dict[str, int] = field(default_factory=dict)  # skill id -> turns left
+    # Blocks ALL HP loss (direct hits and DOT ticks alike), however large the
+    # incoming number — the boss-phase-gating mechanic boss.py builds on.
+    # Unused by ordinary combat.run_combat; defaults False so nothing here
+    # changes for existing fights.
+    immune: bool = False
 
     @classmethod
     def from_player(cls, player: Player) -> "Combatant":
@@ -117,19 +122,35 @@ def _magnitude(caster: Combatant, skill: Skill) -> int:
     return compute_magnitude(skill.base_damage, skill.attribute_multiplier, effective_stat(caster, skill.attribute_type))
 
 
+def _apply_damage(target: Combatant, amount: int) -> int:
+    """Reduces target.hp by `amount`, respecting `Combatant.immune`. Routing
+    every HP loss (direct hits here, DOT ticks in `tick_upkeep`) through this
+    one guard is what makes immunity airtight — a DOT stacked before a boss
+    phase went immune can't quietly bypass it. Returns the HP actually
+    lost (0 while immune, regardless of how large `amount` is)."""
+    if target.immune:
+        return 0
+    lost = min(target.hp, amount)
+    target.hp -= lost
+    return lost
+
+
 def _deal_damage(caster: Combatant, target: Combatant, magnitude: int, skill: Skill, log: list[str]) -> int:
     mitigated = max(1, magnitude - effective_stat(target, StatType.DEFENSE))
     absorbed = min(target.shield, mitigated)
     target.shield -= absorbed
     remaining = mitigated - absorbed
-    target.hp = max(0, target.hp - remaining)
+    lost = _apply_damage(target, remaining)
     if absorbed:
         log.append(f"{target.name}'s shield absorbs {absorbed} damage.")
-    log.append(
-        f"{caster.name} hits {target.name} with {skill.name} for {remaining} damage. "
-        f"({target.hp}/{target.hp_max} HP left)"
-    )
-    return remaining
+    if target.immune and remaining > 0:
+        log.append(f"{caster.name}'s {skill.name} has no effect on {target.name}.")
+    else:
+        log.append(
+            f"{caster.name} hits {target.name} with {skill.name} for {lost} damage. "
+            f"({target.hp}/{target.hp_max} HP left)"
+        )
+    return lost
 
 
 def apply_skill(caster: Combatant, opponent: Combatant, skill: Skill, log: list[str]) -> None:
@@ -195,12 +216,13 @@ def tick_upkeep(combatant: Combatant, log: list[str]) -> bool:
     countdown. Returns True if a stun consumes this turn (caller should skip
     the action)."""
     if combatant.dot_turns_remaining > 0:
-        combatant.hp = max(0, combatant.hp - combatant.dot_damage)
+        lost = _apply_damage(combatant, combatant.dot_damage)
         combatant.dot_turns_remaining -= 1
-        log.append(
-            f"{combatant.name} suffers {combatant.dot_damage} lingering damage. "
-            f"({combatant.hp}/{combatant.hp_max} HP left)"
-        )
+        if lost:
+            log.append(
+                f"{combatant.name} suffers {lost} lingering damage. "
+                f"({combatant.hp}/{combatant.hp_max} HP left)"
+            )
 
     for modifier in combatant.modifiers:
         modifier.turns_remaining -= 1

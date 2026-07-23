@@ -1,8 +1,11 @@
 """Step 7 Chunk A: the Narrator agent's rumor-rewording job -- rewording an
 already-decided rumor string, never inventing a fact. Step 7 Chunk B added
 `narrate_combat_outcome`: a once-per-fight summary of an already-decided
-combat log. Entirely offline (MockClient only), same posture as every other
-generation-role test."""
+combat log. Step 7 Chunk D added an optional `derived_role_hint` param to
+both, for tone-only word-choice guidance. Entirely offline (MockClient
+only), same posture as every other generation-role test."""
+import json
+
 from demonclock.generation.narrator import (
     NARRATE_COMBAT_SCHEMA,
     REWORD_RUMOR_SCHEMA,
@@ -17,6 +20,26 @@ from demonclock.llm.registry import LLMRegistry
 def make_registry(responses: list[object]) -> LLMRegistry:
     config = GenerationConfig(roles={"narrator": [ProviderSpec(provider="mock")]})
     return LLMRegistry(config, extra_clients={"mock": MockClient(responses=responses)})
+
+
+class SpyClient:
+    """A minimal duck-typed LLMClient that remembers the last `user` JSON
+    string it was sent, so a test can assert what actually landed in the
+    payload -- MockClient never records that, only the canned response."""
+
+    def __init__(self, response: dict) -> None:
+        self._response = response
+        self.last_user: str | None = None
+
+    def generate_structured(self, system: str, user: str, schema: dict) -> dict:
+        self.last_user = user
+        return self._response
+
+
+def make_spy_registry(response: dict) -> tuple[LLMRegistry, SpyClient]:
+    spy = SpyClient(response)
+    config = GenerationConfig(roles={"narrator": [ProviderSpec(provider="spy")]})
+    return LLMRegistry(config, extra_clients={"spy": spy}), spy
 
 
 def test_reword_rumor_returns_the_original_text_when_registry_is_none():
@@ -117,3 +140,41 @@ def test_narrate_combat_outcome_returns_none_when_the_ai_returns_an_empty_string
 
 def test_narrate_combat_schema_requires_text():
     assert NARRATE_COMBAT_SCHEMA["required"] == ["text"]
+
+
+# -- derived_role_hint tone biasing (Step 7 Chunk D) ------------------------
+
+def test_reword_rumor_includes_the_role_hint_in_its_payload_when_given():
+    registry, spy = make_spy_registry({"text": "reworded"})
+
+    reword_rumor(registry, "A falls.", 0.8, "trade-focused, combat-averse")
+
+    sent = json.loads(spy.last_user)
+    assert sent["player_role_hint"] == "trade-focused, combat-averse"
+
+
+def test_reword_rumor_omits_the_role_hint_key_when_not_given():
+    registry, spy = make_spy_registry({"text": "reworded"})
+
+    reword_rumor(registry, "A falls.", 0.8)
+
+    sent = json.loads(spy.last_user)
+    assert "player_role_hint" not in sent
+
+
+def test_narrate_combat_outcome_includes_the_role_hint_in_its_payload_when_given():
+    registry, spy = make_spy_registry({"text": "summary"})
+
+    narrate_combat_outcome(registry, "Goblin", "victory", SAMPLE_LOG, "combat-focused")
+
+    sent = json.loads(spy.last_user)
+    assert sent["player_role_hint"] == "combat-focused"
+
+
+def test_narrate_combat_outcome_omits_the_role_hint_key_when_not_given():
+    registry, spy = make_spy_registry({"text": "summary"})
+
+    narrate_combat_outcome(registry, "Goblin", "victory", SAMPLE_LOG)
+
+    sent = json.loads(spy.last_user)
+    assert "player_role_hint" not in sent

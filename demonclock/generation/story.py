@@ -6,12 +6,21 @@ player (SPEC.md §7's "avoid the echo chamber"):
   - "responsive": shaped by the player's own current node/behavior.
   - "world_driven": pushed by the simulation independent of the player
     (invasion/economy pressure already visible in the retrieved context).
-`pipeline.py` requests both every batch so the world isn't just a mirror of
-player habits.
+`pipeline.py` attempts both every batch by default so the world isn't just a
+mirror of player habits -- Step 7 Chunk D added the one exception, skipping
+whichever stream the Director's own weight judged genuinely lopsided that
+batch (see `pipeline.STREAM_SKIP_THRESHOLD`).
 
 The Story agent never writes a precondition manifest or touches the content
 pool -- it only describes a situation in plain fields. `quest.py` is what
 turns a situation into a concrete, manifest-carrying task.
+
+Step 7 Chunk D also made the player's `derived_role_hint` (already present
+in `context["player"]`, gathered since Chunk B but never explicitly used for
+anything until now) load-bearing for tone: the system prompt below tells the
+agent to lean a "responsive" situation's SUBJECT AND tone toward it, but for
+"world_driven" only its narrative TONE -- the subject must stay independent
+of the player, or the two-stream split stops meaning anything.
 """
 from __future__ import annotations
 
@@ -30,8 +39,15 @@ SYSTEM_PROMPT = (
     "A 'responsive' situation should connect to the player's own recent "
     "behavior; a 'world_driven' situation should come from the simulation's "
     "own pressures (invasion, prices, ...) independent of anything the "
-    "player has done. Do not write quest tasks or game-mechanical "
-    "requirements yourself -- only describe the situation."
+    "player has done. The context's player.derived_role_hint is a short "
+    "phrase describing who the player is becoming (e.g. 'trade-focused, "
+    "combat-averse'). For a 'responsive' situation, let it shape both WHAT "
+    "the situation is about and its narrative tone. For a 'world_driven' "
+    "situation, its SUBJECT must stay independent of the player -- do not "
+    "let the hint change what's happening -- but its narrative TONE/word "
+    "choice may still lean toward it, since the same player reads either "
+    "stream. Do not write quest tasks or game-mechanical requirements "
+    "yourself -- only describe the situation."
 )
 
 SITUATION_SCHEMA = {

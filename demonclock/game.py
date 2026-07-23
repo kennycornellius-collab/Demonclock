@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import boss, combat, db, knowledge, pool, rumors, setback, skills
+from . import behavior, boss, combat, db, knowledge, pool, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -122,7 +122,8 @@ def handle_interact(state: GameState) -> None:
     result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
-    summary = narrate_combat_outcome(state.generation, enemy.name, result.value, log)
+    hint = behavior.derived_role_hint(state.player.behavior)
+    summary = narrate_combat_outcome(state.generation, enemy.name, result.value, log, hint)
     if summary:
         print(summary)
 
@@ -177,7 +178,8 @@ def _handle_demon_king(state: GameState) -> None:
     result, log = boss.run_encounter(state.player, boss.DEMON_KING_ENCOUNTER, choose_action)
     for line in log:
         print(line)
-    summary = narrate_combat_outcome(state.generation, boss.DEMON_KING_ENCOUNTER.boss.name, result.value, log)
+    hint = behavior.derived_role_hint(state.player.behavior)
+    summary = narrate_combat_outcome(state.generation, boss.DEMON_KING_ENCOUNTER.boss.name, result.value, log, hint)
     if summary:
         print(summary)
 
@@ -256,8 +258,9 @@ def handle_ask_around(state: GameState) -> None:
         print("No one here has heard anything worth repeating.")
         return
     print("--- Word around here ---")
+    hint = behavior.derived_role_hint(state.player.behavior)
     for rumor in heard:
-        text = reword_rumor(state.generation, rumor.text, rumor.confidence)
+        text = reword_rumor(state.generation, rumor.text, rumor.confidence, hint)
         print(f"  ({rumor.confidence:.0%} sure) {text}")
 
 

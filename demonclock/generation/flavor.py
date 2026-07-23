@@ -21,6 +21,12 @@ again, an accepted "start rough" simplification, same status as every other
 placeholder tuning constant in this codebase) and PULLED, never pushed live —
 `actions._resolve_look`/arrival narration just reads whatever's already
 there, so Move/Look themselves never cost an AI call (SPEC.md §13).
+
+Step 7 Chunk D added the player's `derived_role_hint` (already present in
+`context["player"]`, just not previously threaded into this agent's own
+payload) as optional word-choice/mood flavor -- never something that
+changes what a location actually IS, which stays driven entirely by the
+node's own truth.
 """
 from __future__ import annotations
 
@@ -30,12 +36,17 @@ from ..llm.registry import LLMRegistry
 
 SYSTEM_PROMPT = (
     "You are the ambient-flavor writer for a text RPG. You will be given a "
-    "list of existing locations (id, name, type, state, tags). Write ONE "
-    "short (one sentence) piece of atmospheric color for EACH location, "
-    "keyed by its exact id. Only use ids from the list you were given -- "
-    "never invent a new location. Never state a new fact, event, quest, "
-    "price, or anything the player could act on -- pure sensory/mood "
-    "description only, consistent with the location's given state."
+    "list of existing locations (id, name, type, state, tags) and, "
+    "optionally, the player's derived_role_hint -- a short phrase "
+    "describing who the player is becoming (e.g. 'trade-focused, "
+    "combat-averse'). Write ONE short (one sentence) piece of atmospheric "
+    "color for EACH location, keyed by its exact id. Only use ids from the "
+    "list you were given -- never invent a new location. Never state a new "
+    "fact, event, quest, price, or anything the player could act on -- pure "
+    "sensory/mood description only, consistent with the location's given "
+    "state. If a derived_role_hint is given, you may let it subtly color "
+    "word choice/mood (e.g. a trade-focused player might notice the market "
+    "stalls first), but it must never change what a location actually is."
 )
 
 FLAVOR_SCHEMA = {
@@ -68,6 +79,7 @@ def run_flavor(registry: LLMRegistry, context: dict) -> dict[str, str]:
     known_ids = {context["current_node"]["id"]} | {node["id"] for node in context["neighbor_nodes"]}
     payload = {
         "locations": [context["current_node"], *context["neighbor_nodes"]],
+        "player_role_hint": context["player"]["derived_role_hint"],
     }
     data = registry.generate("flavor", SYSTEM_PROMPT, json.dumps(payload), FLAVOR_SCHEMA)
     return {

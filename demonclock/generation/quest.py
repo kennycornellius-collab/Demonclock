@@ -35,7 +35,12 @@ SYSTEM_PROMPT = (
     "place_hint to a short plain-language description of it -- do NOT "
     "invent that place's id yourself; a separate agent will name and place "
     "it on the map. Leave needs_new_place false for an ordinary quest set at "
-    "an existing node."
+    "an existing node. The context's player.derived_role_hint is a short "
+    "phrase describing who the player is becoming (e.g. 'trade-focused, "
+    "combat-averse') -- let it color the title's and description's word "
+    "choice/tone, never reward_gold, needs_new_place, or any requirement in "
+    "the manifest, all of which must stay strictly determined by the "
+    "situation and existing world truth."
 )
 
 QUEST_SCHEMA = {

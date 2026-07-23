@@ -1,16 +1,18 @@
 """Step 5 Chunks B+C: bounded batch context, Director/Story/Quest agents,
 and the orchestrator that commits their output to the content pool. Entirely
 offline (MockClient only)."""
+import json
+
 from demonclock.canon import RequirementKind
 from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.generation.context import build_batch_context
 from demonclock.generation.director import INTENT_SCHEMA, DirectorIntent, run_director
-from demonclock.generation.flavor import FLAVOR_SCHEMA, run_flavor
-from demonclock.generation.pipeline import run_batch
+from demonclock.generation.flavor import FLAVOR_SCHEMA, SYSTEM_PROMPT as FLAVOR_SYSTEM_PROMPT, run_flavor
+from demonclock.generation.pipeline import STREAM_SKIP_THRESHOLD, _should_run_stream, run_batch
 from demonclock.generation.places import NEW_PLACE_SCHEMA, NewPlace, materialize, run_places
-from demonclock.generation.quest import QUEST_SCHEMA, run_quest, run_quest_repair
-from demonclock.generation.story import SITUATION_SCHEMA, Situation, run_story
+from demonclock.generation.quest import QUEST_SCHEMA, SYSTEM_PROMPT as QUEST_SYSTEM_PROMPT, run_quest, run_quest_repair
+from demonclock.generation.story import SITUATION_SCHEMA, SYSTEM_PROMPT as STORY_SYSTEM_PROMPT, Situation, run_story
 from demonclock.llm.config import GenerationConfig, ProviderSpec
 from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
@@ -26,6 +28,36 @@ GOOD_INTENT = {
     "pressure_level": 1,
     "salient_threads": ["a rival caravan undercutting grain prices"],
 }
+
+# Step 7 Chunk D: weights lopsided enough to fall below STREAM_SKIP_THRESHOLD
+# on one side.
+RESPONSIVE_SKIPPED_INTENT = {
+    "responsive_weight": 0.05,
+    "world_driven_weight": 0.95,
+    "pressure_level": 3,
+    "salient_threads": ["the invasion is nearly complete"],
+}
+WORLD_DRIVEN_SKIPPED_INTENT = {
+    "responsive_weight": 0.95,
+    "world_driven_weight": 0.05,
+    "pressure_level": 0,
+    "salient_threads": [],
+}
+
+
+class SpyClient:
+    """A minimal duck-typed LLMClient that just remembers the last `user`
+    JSON string it was sent, so a test can assert what a caller actually
+    put in the payload -- MockClient (every other test in this file) never
+    records that, only the canned response it returns."""
+
+    def __init__(self, response: dict) -> None:
+        self._response = response
+        self.last_user: str | None = None
+
+    def generate_structured(self, system: str, user: str, schema: dict) -> dict:
+        self.last_user = user
+        return self._response
 
 
 def situation_dict(situation_id: str = "sit1", node_id: str = "village") -> dict:
@@ -562,3 +594,95 @@ def test_run_batch_updates_rather_than_replaces_existing_node_flavor():
         "village": "An older line from a previous batch.",
         "market": "Stalls creak under the weight of the harvest.",
     }
+
+
+# -- Emergent-role biasing: stream-skip frequency (Step 7 Chunk D) ----------
+
+def test_should_run_stream_true_at_or_above_the_threshold():
+    intent = DirectorIntent(
+        responsive_weight=STREAM_SKIP_THRESHOLD, world_driven_weight=1.0,
+        pressure_level=0, salient_threads=[],
+    )
+    assert _should_run_stream(intent, "responsive") is True
+
+
+def test_should_run_stream_false_below_the_threshold():
+    intent = DirectorIntent(
+        responsive_weight=STREAM_SKIP_THRESHOLD - 0.01, world_driven_weight=1.0,
+        pressure_level=0, salient_threads=[],
+    )
+    assert _should_run_stream(intent, "responsive") is False
+
+
+def test_run_batch_skips_the_responsive_stream_when_its_weight_is_lopsidedly_low():
+    registry = make_full_registry(
+        [RESPONSIVE_SKIPPED_INTENT],
+        [situation_dict("sit_world")],  # only ONE queued -- responsive must never be attempted
+        [quest_dict("quest_world")],
+    )
+    state = make_state(registry)
+
+    intent = run_batch(state, registry)
+
+    assert intent == DirectorIntent.from_dict(RESPONSIVE_SKIPPED_INTENT)
+    assert {item.id for item in state.world.content_pool} == {"quest_world"}
+    story_client = registry._explicit_clients["story_mock"]
+    assert story_client.call_count == 1  # only world_driven's call happened
+
+
+def test_run_batch_skips_the_world_driven_stream_when_its_weight_is_lopsidedly_low():
+    registry = make_full_registry(
+        [WORLD_DRIVEN_SKIPPED_INTENT],
+        [situation_dict("sit_responsive")],  # only ONE queued -- world_driven must never be attempted
+        [quest_dict("quest_responsive")],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive"}
+    story_client = registry._explicit_clients["story_mock"]
+    assert story_client.call_count == 1  # only responsive's call happened
+
+
+def test_run_batch_still_runs_both_streams_when_neither_weight_is_lopsided():
+    # GOOD_INTENT (0.6/0.4) -- regression guard: Chunk D must not have
+    # changed the balanced-weights case any of the pre-existing tests rely
+    # on, so this is a direct, explicit assertion of that in one place.
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+
+
+# -- Emergent-role biasing: tone (Step 7 Chunk D) ---------------------------
+
+def test_story_system_prompt_mentions_derived_role_hint():
+    assert "derived_role_hint" in STORY_SYSTEM_PROMPT
+
+
+def test_quest_system_prompt_mentions_derived_role_hint():
+    assert "derived_role_hint" in QUEST_SYSTEM_PROMPT
+
+
+def test_flavor_system_prompt_mentions_derived_role_hint():
+    assert "derived_role_hint" in FLAVOR_SYSTEM_PROMPT
+
+
+def test_run_flavor_includes_the_player_role_hint_in_its_payload():
+    state = make_state()
+    state.player.behavior.trade_actions = 10.0
+    context = build_batch_context(state)
+    spy = SpyClient({"lines": []})
+    registry = LLMRegistry(GenerationConfig(roles={"flavor": [ProviderSpec(provider="spy")]}), extra_clients={"spy": spy})
+
+    run_flavor(registry, context)
+
+    sent = json.loads(spy.last_user)
+    assert sent["player_role_hint"] == context["player"]["derived_role_hint"]

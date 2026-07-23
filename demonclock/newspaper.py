@@ -39,19 +39,23 @@ def leaked_since(world: World, node_id: str, day_before: int, day_after: int) ->
     ]
 
 
-def format_newspaper(leaked: list[Rumor], registry: LLMRegistry | None = None) -> str | None:
+def format_newspaper(
+    leaked: list[Rumor], registry: LLMRegistry | None = None, derived_role_hint: str | None = None,
+) -> str | None:
     """None for an empty list — no awkward "nothing happened" newspaper on an
     ordinary quiet night. Otherwise a short block, one line per leaked rumor,
     same confidence formatting `handle_ask_around` already uses. `registry`
     is optional (Step 7 Chunk A) and, when configured, rewords each rumor's
     already-decided text via the `narrator` role — omitting it (the default)
     reproduces the exact plain template wording this function always
-    produced, so every pre-Chunk-A caller/test keeps working unchanged."""
+    produced, so every pre-Chunk-A caller/test keeps working unchanged.
+    `derived_role_hint` (Step 7 Chunk D) is optional tone-only guidance
+    passed straight through to `reword_rumor`."""
     if not leaked:
         return None
     lines = ["--- Word reached you while you slept ---"]
     lines += [
-        f"  ({rumor.confidence:.0%} sure) {reword_rumor(registry, rumor.text, rumor.confidence)}"
+        f"  ({rumor.confidence:.0%} sure) {reword_rumor(registry, rumor.text, rumor.confidence, derived_role_hint)}"
         for rumor in leaked
     ]
     return "\n".join(lines)

@@ -30,6 +30,17 @@ def resolve(action: Action, state: GameState) -> Outcome:
     return Outcome(action.message or "I don't understand that.", ok=False)
 
 
+def _with_flavor(message: str, state: GameState, node_id: str) -> str:
+    """Appends `world.node_flavor[node_id]` (Step 7 Chunk C) if a batch has
+    ever generated one -- a pure PULL, never a live AI call, so this is a
+    plain dict lookup on every Move/Look/fast-travel regardless of whether
+    generation is even configured. Missing entirely (no generation
+    configured, or this node's never been in a batch's bounded context yet)
+    just means `message` comes back unchanged, same as before this existed."""
+    flavor = state.world.node_flavor.get(node_id)
+    return f"{message} {flavor}" if flavor else message
+
+
 def _resolve_move(action: Action, state: GameState) -> Outcome:
     if state.player.captured:
         return Outcome("You are captured and can't move until you're free.", ok=False)
@@ -60,6 +71,7 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
     )
     if tick_log:
         message += "\n" + "\n".join(tick_log)
+    message = _with_flavor(message, state, node.id)
     return Outcome(message)
 
 
@@ -94,6 +106,7 @@ def resolve_fast_travel(state: GameState, destination_id: str) -> Outcome:
     )
     if tick_log:
         message += "\n" + "\n".join(tick_log)
+    message = _with_flavor(message, state, node.id)
     return Outcome(message)
 
 
@@ -111,6 +124,7 @@ def _resolve_look(state: GameState) -> Outcome:
     if node.prices:
         price_desc = ", ".join(f"{good} {price}g" for good, price in node.prices.items())
         message += f" Prices: {price_desc}."
+    message = _with_flavor(message, state, node.id)
     return Outcome(message)
 
 

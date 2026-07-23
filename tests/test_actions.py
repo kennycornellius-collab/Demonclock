@@ -315,6 +315,41 @@ def test_rest_escapes_once_the_free_day_is_reached():
     assert "free" in outcome.message.lower()
 
 
+def test_look_appends_node_flavor_when_a_batch_has_generated_one():
+    state = make_state()
+    state.world.node_flavor["village"] = "Woodsmoke drifts over the rooftops."
+
+    outcome = resolve(parse("look"), state)
+
+    assert "Woodsmoke drifts over the rooftops." in outcome.message
+
+
+def test_look_omits_flavor_when_none_has_been_generated_for_this_node():
+    outcome = resolve(parse("look"), make_state())  # node_flavor is empty by default
+    assert outcome.ok  # nothing extra, no crash on a missing entry
+
+
+def test_move_appends_the_destinations_flavor_not_the_origins():
+    state = make_state()
+    state.world.node_flavor["village"] = "origin flavor -- should not appear"
+    state.world.node_flavor["market"] = "Stalls creak under the weight of the harvest."
+
+    outcome = resolve(parse("go east"), state)
+
+    assert "Stalls creak under the weight of the harvest." in outcome.message
+    assert "origin flavor" not in outcome.message
+
+
+def test_fast_travel_appends_the_destinations_flavor():
+    state = make_linear_state()
+    state.player.beliefs["c"] = NodeBelief(state="peaceful", last_seen_day=0)
+    state.world.node_flavor["c"] = "A cold wind rattles the shutters."
+
+    outcome = resolve_fast_travel(state, "c")
+
+    assert "A cold wind rattles the shutters." in outcome.message
+
+
 def test_combat_does_not_tick_the_sim():
     state = make_state()
     events_before = len(state.world.scheduled_events)

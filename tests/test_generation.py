@@ -6,6 +6,7 @@ from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.generation.context import build_batch_context
 from demonclock.generation.director import INTENT_SCHEMA, DirectorIntent, run_director
+from demonclock.generation.flavor import FLAVOR_SCHEMA, run_flavor
 from demonclock.generation.pipeline import run_batch
 from demonclock.generation.places import NEW_PLACE_SCHEMA, NewPlace, materialize, run_places
 from demonclock.generation.quest import QUEST_SCHEMA, run_quest, run_quest_repair
@@ -69,13 +70,16 @@ def make_full_registry(
     story_responses: list[object],
     quest_responses: list[object],
     places_responses: list[object] | None = None,
+    flavor_responses: list[object] | None = None,
 ) -> LLMRegistry:
     """Director/Story/Quest/Places each get their OWN mock client (distinct
     provider names) so a test can queue exactly the sequence of responses
-    each role's calls should consume, in call order. `places_responses` is
-    only wired in (as a configured "places" role) when given -- omitting it
-    matches a registry with no places provider configured at all, which
-    Chunk C's tests already rely on to prove Chunk D is purely additive."""
+    each role's calls should consume, in call order. `places_responses`/
+    `flavor_responses` are only wired in (as a configured "places"/"flavor"
+    role) when given -- omitting either matches a registry with no provider
+    configured for it at all, which Chunk C's (Step 5) tests already rely on
+    to prove Chunk D was purely additive, and Step 7 Chunk C's tests reuse
+    the same pattern for "flavor"."""
     roles = {
         "director": [ProviderSpec(provider="director_mock")],
         "story": [ProviderSpec(provider="story_mock")],
@@ -89,6 +93,9 @@ def make_full_registry(
     if places_responses is not None:
         roles["places"] = [ProviderSpec(provider="places_mock")]
         extra_clients["places_mock"] = MockClient(responses=places_responses, name="places_mock")
+    if flavor_responses is not None:
+        roles["flavor"] = [ProviderSpec(provider="flavor_mock")]
+        extra_clients["flavor_mock"] = MockClient(responses=flavor_responses, name="flavor_mock")
     return LLMRegistry(GenerationConfig(roles=roles), extra_clients=extra_clients)
 
 
@@ -439,3 +446,119 @@ def test_run_batch_commits_the_quest_even_when_places_generation_fails():
     assert "abandoned_mine" not in state.world.nodes  # not created
     # but the quest itself is not held hostage by the missing place
     assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+
+
+# -- Flavor agent (Step 7 Chunk C) -------------------------------------------
+
+def flavor_response(*lines: tuple[str, str]) -> dict:
+    return {"lines": [{"node_id": node_id, "text": text} for node_id, text in lines]}
+
+
+def test_run_flavor_returns_a_line_per_known_node():
+    registry = make_full_registry([], [], [], flavor_responses=[
+        flavor_response(
+            ("village", "Woodsmoke drifts over the rooftops."),
+            ("market", "Stalls creak under the weight of the harvest."),
+        ),
+    ])
+    state = make_state(registry)
+
+    lines = run_flavor(registry, build_batch_context(state))
+
+    assert lines == {
+        "village": "Woodsmoke drifts over the rooftops.",
+        "market": "Stalls creak under the weight of the harvest.",
+    }
+
+
+def test_run_flavor_drops_a_line_for_an_id_outside_the_bounded_context():
+    # "far_away" is a real node in make_world() but NOT linked to "village"
+    # (deliberately, so build_batch_context's bounded slice excludes it) --
+    # a reply naming it anyway must not leak into the result.
+    registry = make_full_registry([], [], [], flavor_responses=[
+        flavor_response(
+            ("village", "Woodsmoke drifts over the rooftops."),
+            ("far_away", "should never appear -- not in the bounded context"),
+        ),
+    ])
+    state = make_state(registry)
+
+    lines = run_flavor(registry, build_batch_context(state))
+
+    assert lines == {"village": "Woodsmoke drifts over the rooftops."}
+
+
+def test_run_flavor_drops_an_empty_text_line():
+    registry = make_full_registry([], [], [], flavor_responses=[flavor_response(("village", "   "))])
+    state = make_state(registry)
+
+    lines = run_flavor(registry, build_batch_context(state))
+
+    assert lines == {}
+
+
+def test_flavor_schema_requires_lines():
+    assert FLAVOR_SCHEMA["required"] == ["lines"]
+
+
+# -- pipeline.run_batch: ambient flavor (Chunk C) ---------------------------
+
+def test_run_batch_populates_node_flavor():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+        flavor_responses=[flavor_response(("village", "Woodsmoke drifts over the rooftops."))],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert state.world.node_flavor == {"village": "Woodsmoke drifts over the rooftops."}
+
+
+def test_run_batch_leaves_node_flavor_untouched_when_flavor_role_is_unconfigured():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert state.world.node_flavor == {}
+
+
+def test_run_batch_still_commits_quests_when_flavor_generation_fails():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+        flavor_responses=[],  # empty queue -- the flavor call fails
+    )
+    state = make_state(registry)
+
+    intent = run_batch(state, registry)
+
+    assert intent == DirectorIntent.from_dict(GOOD_INTENT)
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+    assert state.world.node_flavor == {}
+
+
+def test_run_batch_updates_rather_than_replaces_existing_node_flavor():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+        flavor_responses=[flavor_response(("market", "Stalls creak under the weight of the harvest."))],
+    )
+    state = make_state(registry)
+    state.world.node_flavor["village"] = "An older line from a previous batch."
+
+    run_batch(state, registry)
+
+    assert state.world.node_flavor == {
+        "village": "An older line from a previous batch.",
+        "market": "Stalls creak under the weight of the harvest.",
+    }

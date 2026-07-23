@@ -46,6 +46,15 @@ class World:
         # configured" — the reveal step is then a no-op, so a minimal/test
         # world with no invasion content is unaffected.
         self.invasion_origin_id: str | None = None
+        # Ambient per-node flavor lines (SPEC.md §2/§10, Step 7 Chunk C) --
+        # AI-generated atmosphere, refreshed for whichever nodes a batch's
+        # bounded context covered (generation/flavor.py), PULLED by
+        # actions.py's look/arrival narration rather than generated live.
+        # Purely cosmetic: never a fact, never validated by the canon check
+        # (nothing here implies a state change), so a stale or missing entry
+        # for any given node is harmless -- the caller just shows nothing
+        # extra, same as before this existed.
+        self.node_flavor: dict[str, str] = {}
 
     # -- construction --------------------------------------------------
 

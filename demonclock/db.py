@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS accepted_quests (
     data TEXT NOT NULL   -- JSON dict: flattened {"id": ..., **payload} (Step 6 Chunk B)
 );
 
+CREATE TABLE IF NOT EXISTS node_flavor (
+    node_id TEXT PRIMARY KEY,
+    text TEXT NOT NULL   -- AI-generated ambient line (Step 7 Chunk C), plain text not JSON
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -138,6 +143,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM event_log")
     conn.execute("DELETE FROM content_pool")
     conn.execute("DELETE FROM accepted_quests")
+    conn.execute("DELETE FROM node_flavor")
 
     for node in world.nodes.values():
         conn.execute(
@@ -233,6 +239,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO accepted_quests (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(quest)),
         )
+    for node_id, text in world.node_flavor.items():
+        conn.execute(
+            "INSERT INTO node_flavor (node_id, text) VALUES (?, ?)",
+            (node_id, text),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -299,6 +310,9 @@ def load_game(conn: sqlite3.Connection):
     ]
     origin_row = conn.execute("SELECT value FROM meta WHERE key = 'invasion_origin_id'").fetchone()
     world.invasion_origin_id = json.loads(origin_row[0]) if origin_row else None
+    world.node_flavor = {
+        r[0]: r[1] for r in conn.execute("SELECT node_id, text FROM node_flavor")
+    }
     accepted_quests = [
         json.loads(r[0])
         for r in conn.execute("SELECT data FROM accepted_quests ORDER BY sort_order")

@@ -30,9 +30,12 @@ from dataclasses import dataclass, field
 
 # Every generation role in SPEC.md §7's pipeline, plus the entity-resolution
 # AI fallback (SPEC.md §8) resolve.py wires in at Chunk D, plus the Narrator
-# (SPEC.md §2/§10 -- rumor wording, Step 7 Chunk A) that touches presentation
-# text rather than world content.
-ROLES = ("director", "story", "quest", "places", "entity_resolution", "narrator")
+# (SPEC.md §2/§10 -- rumor wording + combat-outcome summaries, Step 7 Chunks
+# A/B) that touches presentation text rather than world content, plus
+# "flavor" (Step 7 Chunk C) -- a batch-time content-generation role like
+# director/story/quest/places, just for ambient per-node atmosphere rather
+# than manifest-carrying content.
+ROLES = ("director", "story", "quest", "places", "entity_resolution", "narrator", "flavor")
 
 # Extend alongside registry.PROVIDER_CLASSES when a new provider ships.
 PROVIDER_API_KEY_ENV = {"gemini": "GEMINI_API_KEY"}

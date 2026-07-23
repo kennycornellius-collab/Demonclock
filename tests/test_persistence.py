@@ -449,6 +449,38 @@ def test_invasion_origin_id_round_trips(tmp_path):
     conn.close()
 
 
+def test_node_flavor_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    world.node_flavor["village"] = "Woodsmoke drifts over the rooftops."
+    world.node_flavor["market"] = "Stalls creak under the weight of the harvest."
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.node_flavor == world.node_flavor
+
+    conn.close()
+
+
+def test_node_flavor_defaults_to_empty_for_a_fresh_world(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.node_flavor == {}
+
+    conn.close()
+
+
 def test_invasion_origin_id_defaults_to_none_when_unset(tmp_path):
     from demonclock.models import Node
     from demonclock.world import World

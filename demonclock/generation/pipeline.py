@@ -26,6 +26,7 @@ from ..llm.registry import LLMRegistry, NoProviderConfiguredError
 from ..pool import commit_or_repair
 from .context import build_batch_context
 from .director import DirectorIntent, run_director
+from .flavor import run_flavor
 from .places import materialize, run_places
 from .quest import run_quest, run_quest_repair
 from .story import run_story
@@ -66,7 +67,22 @@ def run_batch(state: GameState, registry: LLMRegistry) -> DirectorIntent | None:
     for stream in _STREAMS:
         _generate_and_commit(state, registry, context, intent, stream)
 
+    _generate_flavor(state, registry, context)
+
     return intent
+
+
+def _generate_flavor(state: GameState, registry: LLMRegistry, context: dict) -> None:
+    """Step 7 Chunk C: refreshes `state.world.node_flavor` for whichever
+    nodes this batch's bounded context covered. Not stream-specific (flavor
+    isn't responsive/world-driven content, just ambient color) and, like
+    every other per-role failure in this pipeline, must never take down the
+    Director's already-returned intent or either content stream's commits."""
+    try:
+        lines = run_flavor(registry, context)
+    except _DEGRADE_ON:
+        return
+    state.world.node_flavor.update(lines)
 
 
 def _generate_and_commit(

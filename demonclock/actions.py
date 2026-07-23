@@ -147,7 +147,7 @@ def _resolve_rest(state: GameState) -> Outcome:
         message += "\n" + "\n".join(tick_log)
 
     leaked = newspaper.leaked_since(state.world, location_id, day_before, state.clock.current_day)
-    newspaper_text = newspaper.format_newspaper(leaked)
+    newspaper_text = newspaper.format_newspaper(leaked, state.generation)
     if newspaper_text:
         message += "\n" + newspaper_text
 

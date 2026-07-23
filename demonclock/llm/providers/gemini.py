@@ -28,7 +28,7 @@ from ..schema import matches_schema
 # other tuning constant in this codebase (combat.py's DOT_DURATION, skills.py's
 # fair-cost constants, ...) -- swap freely via GenerationConfig, no code change
 # needed.
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-2.5-flash-lite"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 REQUEST_TIMEOUT_SECONDS = 30
 

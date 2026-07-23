@@ -1,8 +1,14 @@
 """Step 6 Chunk A: the push newspaper. Reuses rumors.rumors_reaching (Step 3
 Stage 4) unchanged -- these tests only exercise the before/after diff and
-formatting this module adds on top."""
+formatting this module adds on top. Step 7 Chunk A added the optional
+`registry` param that rewords each line via `generation.narrator`; those
+cases live at the bottom, the original registry-less tests above are
+unchanged (a missing registry must reproduce the exact old behavior)."""
 from demonclock.events import EventKind
 from demonclock.history import record
+from demonclock.llm.config import GenerationConfig, ProviderSpec
+from demonclock.llm.providers.mock import MockClient
+from demonclock.llm.registry import LLMRegistry
 from demonclock.models import Node
 from demonclock.newspaper import format_newspaper, leaked_since
 from demonclock.world import World
@@ -85,3 +91,30 @@ def test_format_newspaper_includes_confidence_and_text_for_each_rumor():
     assert text is not None
     assert "A falls." in text
     assert "%" in text  # confidence rendered as a percentage
+
+
+def test_format_newspaper_rewords_via_the_narrator_role_when_registry_is_configured():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="A falls.")
+    leaked = leaked_since(world, "b", day_before=0, day_after=1)
+    config = GenerationConfig(roles={"narrator": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={
+        "mock": MockClient(responses=[{"text": "Whispers claim A has fallen..."}]),
+    })
+
+    text = format_newspaper(leaked, registry)
+
+    assert "Whispers claim A has fallen..." in text
+    assert "A falls." not in text
+
+
+def test_format_newspaper_falls_back_to_template_text_without_a_registry():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="A falls.")
+    leaked = leaked_since(world, "b", day_before=0, day_after=1)
+
+    text = format_newspaper(leaked, registry=None)
+
+    assert "A falls." in text

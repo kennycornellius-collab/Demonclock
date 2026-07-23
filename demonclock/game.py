@@ -7,6 +7,7 @@ from . import boss, combat, db, knowledge, pool, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
+from .generation.narrator import reword_rumor
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .parser import parse
@@ -250,7 +251,8 @@ def handle_ask_around(state: GameState) -> None:
         return
     print("--- Word around here ---")
     for rumor in heard:
-        print(f"  ({rumor.confidence:.0%} sure) {rumor.text}")
+        text = reword_rumor(state.generation, rumor.text, rumor.confidence)
+        print(f"  ({rumor.confidence:.0%} sure) {text}")
 
 
 def handle_quests(state: GameState) -> None:

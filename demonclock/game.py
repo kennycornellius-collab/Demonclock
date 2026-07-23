@@ -7,7 +7,7 @@ from . import boss, combat, db, knowledge, pool, rumors, setback, skills
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
-from .generation.narrator import reword_rumor
+from .generation.narrator import narrate_combat_outcome, reword_rumor
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .parser import parse
@@ -119,9 +119,12 @@ def handle_interact(state: GameState) -> None:
         except (ValueError, IndexError):
             return options[0]  # invalid input defaults to the first (Basic Attack)
 
-    _result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
+    result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
+    summary = narrate_combat_outcome(state.generation, enemy.name, result.value, log)
+    if summary:
+        print(summary)
 
 
 def _handle_demon_king(state: GameState) -> None:
@@ -174,6 +177,9 @@ def _handle_demon_king(state: GameState) -> None:
     result, log = boss.run_encounter(state.player, boss.DEMON_KING_ENCOUNTER, choose_action)
     for line in log:
         print(line)
+    summary = narrate_combat_outcome(state.generation, boss.DEMON_KING_ENCOUNTER.boss.name, result.value, log)
+    if summary:
+        print(summary)
 
     if result is boss.EncounterResult.VICTORY:
         state.player.game_over = "victory"

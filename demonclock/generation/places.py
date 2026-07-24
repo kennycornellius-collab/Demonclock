@@ -82,17 +82,13 @@ def materialize(state: GameState, anchor_node_id: str, new_place: NewPlace) -> b
     """Adds `new_place` to the live graph via `world.add_node`/`add_link`.
     Returns False (and leaves the world untouched) if the id already exists,
     the anchor doesn't, or the constructor itself rejects the direction/
-    travel_days -- a bad proposal is silently absorbed, same as any other
-    discarded generated item, never a crash.
-
-    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): does NOT
-    check whether `anchor_node_id` already has a link in `new_place.direction`
-    before calling `add_link` -- see `world.add_link`'s docstring for the
-    full gap. A colliding direction currently succeeds silently and makes
-    the new place unreachable via ordinary Move. Revisit by pre-checking
-    `world.links_from(anchor_node_id)` for an existing same-direction link
-    here, or by asking the Places agent for a different direction, before
-    ever calling `add_link`."""
+    travel_days/direction-collision -- a bad proposal is silently absorbed,
+    same as any other discarded generated item, never a crash. `add_link`
+    itself now rejects a direction that `anchor_node_id` already has an
+    outgoing link in (world.py's own invariant), so that case reaches this
+    function as a `WorldError` exactly like a bad direction/travel_days
+    already did -- the `except WorldError` below rolls the node back the
+    same way for all three."""
     world = state.world
     if new_place.id in world.nodes or anchor_node_id not in world.nodes:
         return False

@@ -40,6 +40,33 @@ def test_add_link_unknown_direction_requires_one_way():
     assert world.get_link("a", "b") is not None
 
 
+def test_add_link_rejects_a_second_outgoing_link_in_the_same_direction():
+    world = make_world("village", "market", "wilds")
+    world.add_link("village", "market", "east", travel_days=1)
+
+    with pytest.raises(WorldError):
+        world.add_link("village", "wilds", "east", travel_days=3)
+
+    # rejected atomically -- no partial/orphaned row from the failed call
+    assert world.get_link("village", "wilds") is None
+    assert world.get_link("wilds", "village") is None
+    # the original link is untouched
+    assert world.get_link("village", "market").travel_days == 1
+
+
+def test_add_link_rejects_a_collision_on_the_reverse_direction_too():
+    world = make_world("village", "market", "wilds")
+    # "wilds" already has an outgoing "south" link (opposite of "north")
+    world.add_link("wilds", "market", "south", travel_days=1)
+
+    with pytest.raises(WorldError):
+        # village -> wilds "north" would need to write wilds -> village
+        # "south", colliding with the existing wilds -> market "south"
+        world.add_link("village", "wilds", "north", travel_days=2)
+
+    assert world.get_link("village", "wilds") is None
+
+
 def test_block_link_flips_both_rows_by_default():
     world = make_world("village", "market")
     world.add_link("village", "market", "north", travel_days=1)
@@ -93,7 +120,9 @@ def test_shortest_path_routes_around_blocked_link():
     world = make_world("a", "b", "c")
     world.add_link("a", "b", "north", travel_days=1)
     world.add_link("a", "c", "east", travel_days=5)
-    world.add_link("c", "b", "north", travel_days=1)
+    # "east" (not "north") so c->b's reverse ("west") doesn't collide with
+    # b's existing outgoing "south" (the reverse of a->b's "north")
+    world.add_link("c", "b", "east", travel_days=1)
 
     world.block_link("a", "b", reason="invasion")
 

@@ -1,7 +1,10 @@
 """The graph map. SPEC.md §3: nodes + directional links, no coordinates.
 
-Two invariants enforced HERE (not by convention — see tests/test_world.py):
+Three invariants enforced HERE (not by convention — see tests/test_world.py):
   - add_link always writes both directional rows unless one_way=True.
+  - add_link rejects a direction that already has an outgoing link from
+    from_id (or, for the reverse row, from to_id) — two links can never
+    silently share a direction from the same node.
   - block_link always flips both directional rows unless directional_block=True.
 """
 from __future__ import annotations
@@ -74,30 +77,27 @@ class World:
         """Bidirectional-by-construction link (SPEC.md §3). Writes from->to,
         and unless one_way, atomically writes the reverse to->from too.
 
-        KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): this
-        enforces "has a known opposite" and "travel_days >= 1" but does NOT
-        check whether `from_id` already has an outgoing link in the same
-        `direction`. Two links sharing a direction from one node are
-        silently both stored; `actions._resolve_move` matches by direction
-        string and always takes the first one found, so the second becomes
-        permanently unreachable via ordinary Move (though still reachable
-        via `shortest_path`/fast-travel, which doesn't key off direction) —
-        with no error anywhere. `generation/places.py`'s `materialize` is a
-        real caller that can trigger this (a proposed direction colliding
-        with the anchor node's existing link) and does not currently guard
-        against it either. Revisit by having `add_link` reject (or
-        `materialize` pre-check) a direction collision at `from_id` before
-        this becomes a live, AI-generated dead end."""
+        Rejects a `direction` that `from_id` already has an outgoing link
+        in (and, for the reverse row, a rejected `opposite` that `to_id`
+        already has outgoing) — `actions._resolve_move` matches by
+        direction string and always takes the first one found, so a silent
+        second link in the same direction would be a permanent dead end
+        reachable only via `shortest_path`/fast-travel, never ordinary
+        Move. All validation happens before any row is written, so a
+        rejected call leaves the graph completely untouched (no partial
+        forward-only write)."""
         if from_id not in self.nodes:
             raise WorldError(f"unknown node id: {from_id!r}")
         if to_id not in self.nodes:
             raise WorldError(f"unknown node id: {to_id!r}")
         if travel_days < 1:
             raise WorldError("travel_days must be >= 1")
+        if any(link.direction == direction for link in self.links.get(from_id, [])):
+            raise WorldError(
+                f"{from_id!r} already has an outgoing link in direction {direction!r}"
+            )
 
-        forward = Link(from_id, to_id, direction, travel_days, one_way=one_way)
-        self.links.setdefault(from_id, []).append(forward)
-
+        opposite = None
         if not one_way:
             opposite = OPPOSITE_DIRECTION.get(direction)
             if opposite is None:
@@ -105,6 +105,15 @@ class World:
                     f"no known opposite for direction {direction!r}; "
                     "pass one_way=True for a deliberate one-way link"
                 )
+            if any(link.direction == opposite for link in self.links.get(to_id, [])):
+                raise WorldError(
+                    f"{to_id!r} already has an outgoing link in direction {opposite!r}"
+                )
+
+        forward = Link(from_id, to_id, direction, travel_days, one_way=one_way)
+        self.links.setdefault(from_id, []).append(forward)
+
+        if not one_way:
             reverse = Link(to_id, from_id, opposite, travel_days, one_way=one_way)
             self.links.setdefault(to_id, []).append(reverse)
 

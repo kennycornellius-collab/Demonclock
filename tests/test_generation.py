@@ -387,7 +387,10 @@ def test_new_place_schema_requires_all_five_fields():
 
 def test_materialize_adds_a_bidirectional_link_with_the_proposed_travel_days():
     state = make_state()
-    new_place = NewPlace(id="abandoned_mine", name="Abandoned Mine", type="wilds", direction="east", travel_days=2)
+    # "north" (not "east") -- make_world already gives "village" an
+    # outgoing "east" link to "market", which add_link now rejects a
+    # second outgoing link in the same direction from
+    new_place = NewPlace(id="abandoned_mine", name="Abandoned Mine", type="wilds", direction="north", travel_days=2)
 
     ok = materialize(state, "village", new_place)
 
@@ -397,7 +400,7 @@ def test_materialize_adds_a_bidirectional_link_with_the_proposed_travel_days():
     reverse = state.world.get_link("abandoned_mine", "village")
     assert forward.travel_days == 2
     assert reverse is not None  # bidirectional-by-construction (SPEC.md §3)
-    assert reverse.direction == "west"  # the known opposite of "east"
+    assert reverse.direction == "south"  # the known opposite of "north"
 
 
 def test_materialize_rejects_an_unrecognized_direction_and_rolls_back_the_node():
@@ -420,6 +423,18 @@ def test_materialize_rejects_a_travel_days_of_zero():
     assert "too_close" not in state.world.nodes
 
 
+def test_materialize_rejects_a_direction_collision_and_rolls_back_the_node():
+    # make_world already links "village" -> "market" via "east"
+    state = make_state()
+    new_place = NewPlace(id="second_place", name="Second Place", type="wilds", direction="east", travel_days=1)
+
+    ok = materialize(state, "village", new_place)
+
+    assert ok is False
+    assert "second_place" not in state.world.nodes  # rolled back, not left orphaned
+    assert state.world.get_link("village", "market").travel_days == 1  # original link untouched
+
+
 def test_materialize_refuses_to_overwrite_an_existing_node_id():
     state = make_state()
     new_place = NewPlace(id="market", name="A Different Market", type="wilds", direction="east", travel_days=1)
@@ -437,7 +452,9 @@ def test_run_batch_materializes_a_new_place_when_a_quest_asks_for_one():
         [GOOD_INTENT],
         [situation_dict("sit_responsive"), situation_dict("sit_world")],
         [quest_dict_needing_new_place("quest_responsive"), quest_dict("quest_world")],
-        places_responses=[new_place_dict()],
+        # "north" -- "village" already has an outgoing "east" link (to
+        # "market") in make_world, which add_link now rejects colliding into
+        places_responses=[new_place_dict(direction="north")],
     )
     state = make_state(registry)
 

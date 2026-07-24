@@ -91,6 +91,26 @@ def test_run_combat_flee_ends_immediately_when_player_is_faster():
     assert enemy.hp == 100
 
 
+def test_run_combat_forces_a_stalemate_flee_after_the_round_cap():
+    # Player heals back to full every round and never attacks -- neither
+    # side can ever die, so only the round cap can end this fight.
+    endless_heal = Skill(
+        id="endless_heal", name="Endless Heal",
+        effects=[Effect(EffectKind.HEAL)],
+        attribute_type=StatType.MAGIC, base_damage=9999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    player = make_player(hp=100, hp_max=100, magic=1, agility=100, skills=[endless_heal])
+    enemy = make_combatant(name="Immortal Foe", hp=9999, hp_max=9999, strength=5, defense=0, agility=1)
+
+    result, log = run_combat(player, enemy, choose_action=lambda *_: endless_heal)
+
+    assert result is CombatResult.FLED
+    assert "drags on" in log[-1]
+    assert player.hp > 0  # heals back to (near) full every round, never actually dying
+    assert enemy.hp == 9999  # player never attacked
+
+
 def test_run_combat_does_not_advance_anything_but_hp_and_mana():
     player = make_player(strength=50, defense=20, agility=20, hp=100, hp_max=100)
     location_before = player.location_id

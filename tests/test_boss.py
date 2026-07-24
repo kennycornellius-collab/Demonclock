@@ -219,6 +219,28 @@ def test_defeat_when_the_player_dies_and_is_not_captured():
     assert player.captured is False  # unlike combat.run_combat, this is NOT a recoverable setback
 
 
+def test_run_encounter_forces_a_stalemate_flee_after_the_round_cap():
+    # Boss is permanently immune (can never reach 0 HP, and this is the last
+    # phase so nothing ever advances it) and the player heals back to full
+    # every round -- only the round cap can end this fight.
+    endless_heal = Skill(
+        id="endless_heal", name="Endless Heal",
+        effects=[Effect(EffectKind.HEAL)],
+        attribute_type=StatType.MAGIC, base_damage=9999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    boss = make_boss(hp=9999, hp_max=9999, strength=5, agility=1, defense=0)
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=True)
+    encounter = Encounter(id="e", name="the Undying Boss", boss=boss, phases=[phase])
+    player = make_player(hp=100, hp_max=100, magic=1, agility=100, skills=[endless_heal])
+
+    result, log = run_encounter(player, encounter, choose_action=lambda *_a: (endless_heal, boss))
+
+    assert result is EncounterResult.FLED
+    assert "drags on" in log[-1]
+    assert player.hp > 0  # heals back to (near) full every round, never actually dying
+
+
 def test_fled_ends_immediately_when_the_player_is_faster():
     encounter = two_phase_encounter()
     player = make_player(agility=1000, hp=50, hp_max=50)

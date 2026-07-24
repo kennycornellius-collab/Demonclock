@@ -39,6 +39,11 @@ STUN_DURATION = 1
 BUFF_DEBUFF_DURATION = 3
 LIFESTEAL_FRACTION = 0.5
 
+# Step 8 P4: the circuit breaker for a stalemate (e.g. a heal/shield-only
+# build outpacing a weak enemy's damage) — generous enough not to truncate
+# any real fight, low enough to guarantee run_combat always returns.
+MAX_COMBAT_ROUNDS = 100
+
 _EFFECT_ORDER = [
     EffectKind.DAMAGE, EffectKind.HEAL, EffectKind.LIFESTEAL, EffectKind.SHIELD,
     EffectKind.STUN, EffectKind.DOT, EffectKind.BUFF, EffectKind.DEBUFF,
@@ -275,22 +280,28 @@ def run_combat(
     a captured player's guaranteed release day (setback.py) on DEFEAT; it
     defaults to 0 since most tests don't care about the exact day.
 
-    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): the main
-    loop below (`while fighter.hp > 0 and enemy.hp > 0`) has no turn cap or
-    stalemate detection. If neither side can ever land lethal damage (e.g. a
-    heal/shield-only build outpacing a weak enemy's damage), this loop runs
-    forever. Harmless today since `choose_action` is always a human
-    answering `input()` in practice, bounding it implicitly — but there is
-    no engine-level circuit breaker, which would matter the moment
-    `choose_action` is ever driven by a script or a future automated/AI
-    opponent. Revisit by adding a max-round count that forces a draw/flee
-    outcome if reached.
+    Guaranteed to terminate (Step 8 P4): after MAX_COMBAT_ROUNDS full rounds
+    with neither side dead — e.g. a heal/shield-only build outpacing a weak
+    enemy's damage — the fight is forced to a stalemate FLED, the same
+    result and consequences (no capture, resettable) as the player choosing
+    to flee. Harmless in practice today, since `choose_action` is always a
+    human answering `input()`, but this is the engine-level circuit breaker
+    that matters the moment `choose_action` is ever driven by a script or a
+    future automated/AI opponent.
     """
     fighter = Combatant.from_player(player)
     log: list[str] = []
     order = turn_order(fighter, enemy)
+    rounds = 0
 
     while fighter.hp > 0 and enemy.hp > 0:
+        if rounds >= MAX_COMBAT_ROUNDS:
+            player.hp = fighter.hp
+            player.mana = fighter.mana
+            log.append(f"The fight against the {enemy.name} drags on with no end in sight. You disengage.")
+            return CombatResult.FLED, log
+        rounds += 1
+
         for side in order:
             if fighter.hp <= 0 or enemy.hp <= 0:
                 break

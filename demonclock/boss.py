@@ -23,9 +23,7 @@ matching notes): enemy AI (boss + adds) always casts BASIC_ATTACK at the
 player — the same simplification enemies.py already has for ordinary combat
 ("enemies don't cast learned skills yet"). Boss/add skill casting is a
 future refinement, not required to prove the phase/immunity/trigger
-mechanic. Also, like `combat.run_combat`, there is no turn cap or stalemate
-detection — harmless while `choose_action` is a human at a prompt, but no
-engine-level circuit breaker exists if it's ever automated.
+mechanic.
 """
 from __future__ import annotations
 
@@ -37,6 +35,13 @@ from enum import Enum
 from .combat import BASIC_ATTACK, Combatant, apply_skill, tick_upkeep, usable_skills
 from .models import Player
 from .skills import Effect, EffectKind, Skill, StatType
+
+
+# Step 8 P4: same circuit-breaker role as combat.MAX_COMBAT_ROUNDS, sized
+# larger since a multi-phase encounter legitimately runs longer than one
+# ordinary fight — counts rounds across the WHOLE encounter, not reset per
+# phase (unlike rounds_this_phase, which trigger checking needs reset).
+MAX_ENCOUNTER_ROUNDS = 200
 
 
 class PhaseTriggerKind(str, Enum):
@@ -155,6 +160,13 @@ def run_encounter(
     start of the call, so a stored Encounter (a module-level constant, or a
     future content-pool item) is never mutated by playing it — the same
     fight can be attempted again after a flee or a defeat.
+
+    Guaranteed to terminate (Step 8 P4): after MAX_ENCOUNTER_ROUNDS rounds
+    across the WHOLE encounter (not reset per phase — an immortal add or an
+    unreachable HP_THRESHOLD would otherwise stall a phase forever), the
+    fight is forced to a stalemate FLED — same consequence-free result as
+    the player choosing to flee, and, like combat.run_combat, resettable on
+    a later attempt.
     """
     fighter = Combatant.from_player(player)
     boss = copy.deepcopy(encounter.boss)
@@ -167,6 +179,7 @@ def run_encounter(
     active_adds: list[Combatant] = []
     order: list[Combatant] = []
     rounds_this_phase = 0
+    rounds_total = 0
 
     def enter_phase(index: int) -> None:
         nonlocal active_adds, order, rounds_this_phase
@@ -181,6 +194,12 @@ def run_encounter(
     enter_phase(phase_index)
 
     while True:
+        if rounds_total >= MAX_ENCOUNTER_ROUNDS:
+            player.hp, player.mana = fighter.hp, fighter.mana
+            log.append(f"The battle against {encounter.name} drags on with no end in sight. You disengage.")
+            return EncounterResult.FLED, log
+        rounds_total += 1
+
         phase = encounter.phases[phase_index]
 
         for actor in order:

@@ -44,6 +44,22 @@ def test_matches_schema_never_raises_on_garbage_input():
     assert not matches_schema(None, {"type": "object", "properties": None})
 
 
+def test_matches_schema_accepts_a_whole_number_float_for_an_integer_field():
+    # Step 8 P6: JSON itself doesn't distinguish int/float -- a provider
+    # serializing an integer-typed field as e.g. 2.0 is still schema-valid.
+    assert matches_schema({"pressure": 2.0}, SCHEMA)
+
+
+def test_matches_schema_rejects_a_non_whole_float_for_an_integer_field():
+    assert not matches_schema({"pressure": 2.5}, SCHEMA)
+
+
+def test_matches_schema_still_rejects_a_bool_for_an_integer_field():
+    # bool is a subclass of int in Python -- must not slip through either
+    # form of the integer check.
+    assert not matches_schema({"pressure": True}, SCHEMA)
+
+
 # -- MockClient's one-retry-then-discard contract --------------------------
 
 def test_mock_client_returns_a_matching_first_response():

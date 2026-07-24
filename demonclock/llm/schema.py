@@ -11,24 +11,29 @@ properties, required, items, enum. Anything else in a schema dict is ignored
 rather than rejected, so callers can still document extra hints (e.g.
 "description") without this validator tripping on them.
 
-KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): the
-"integer" check below is stricter than JSON's actual number model — JSON
-itself doesn't distinguish int/float, only Python's parsed representation
-does. This has never been exercised against a REAL Gemini response (only
-hand-built dicts and monkeypatched HTTP responses in tests) — if a live
-call ever serializes an integer-typed field as something `json.loads`
-turns into a Python `float` (e.g. `5.0`), this would reject it as
-"malformed" (triggering the one retry, then a discard) for a reason
-unrelated to the actual content. Revisit if a live Gemini call ever
-produces a spurious `MalformedGenerationError` on an otherwise-sane
-integer field — likely fix is accepting a whole-number float here too.
+Step 8 P6: the "integer" check accepts a whole-number float (e.g. `5.0`) as
+well as a real `int` — JSON itself doesn't distinguish int/float, only
+Python's parsed representation does, so a provider that serializes an
+integer-typed field as `5.0` is still schema-valid, not "malformed." A
+non-whole float (`5.5`) still correctly fails — this only widens what
+counts as an integer, it doesn't loosen "number" into accepting non-integer
+values for an "integer"-typed field. Confirmed against a real (not
+monkeypatched) Gemini call — see progress.md's Step 8 P6 entry.
 """
 from __future__ import annotations
+
+def _is_integer(v: object) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, int):
+        return True
+    return isinstance(v, float) and v.is_integer()
+
 
 _TYPE_CHECKS = {
     "object": lambda v: isinstance(v, dict),
     "string": lambda v: isinstance(v, str),
-    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "integer": _is_integer,
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
     "boolean": lambda v: isinstance(v, bool),
     "array": lambda v: isinstance(v, list),

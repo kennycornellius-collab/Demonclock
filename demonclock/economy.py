@@ -20,6 +20,15 @@ from .world import World
 
 BASE_PRICE: dict[str, int] = {"grain": 10}
 
+# The target price for any good with no explicit BASE_PRICE entry above —
+# same "start rough, calibrate by feel" status as PRICE_STEP. Deliberate
+# and documented (Step 8 P3), unlike falling back to a good's own live
+# `current` price (that fallback never converges: the target recomputes off
+# the same moving value every tick, so an occupied node's price for an
+# untracked good drifted upward forever instead of stabilizing at a fixed
+# multiple like grain does).
+DEFAULT_BASE_PRICE = 10
+
 PRICE_STEP = 1  # max change per tick, per good — same "start rough,
                 # calibrate by feel" status as combat.py's tuning constants
 OCCUPIED_MULTIPLIER = 2.0
@@ -54,17 +63,10 @@ def apply_price_shift(state: GameState) -> list[str]:
     target — never jumps straight there. Only nodes that actually moved get a
     narration line (mirrors Stages 1-2's "only narrate real change").
 
-    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): only
-    ever actually converges correctly for a good that's in `BASE_PRICE`
-    (currently just "grain"). For any other good, `base = BASE_PRICE.get(
-    good_id, current)` falls back to the node's OWN current price as its
-    "base" — the target then recomputes off that same moving value every
-    tick, so an occupied node's price for an untracked good never
-    stabilizes at a fixed multiple; it drifts upward indefinitely for as
-    long as the node stays occupied, instead of settling like grain does.
-    Revisit once a second tracked good exists — either give every good a
-    real fixed `BASE_PRICE` entry, or anchor the target to the price first
-    observed/seeded rather than the live "current" value."""
+    Every good converges, not just ones in `BASE_PRICE` (Step 8 P3): a good
+    with no explicit entry there falls back to the fixed `DEFAULT_BASE_PRICE`
+    rather than its own live `current` price, so its target is stable across
+    ticks instead of recomputing off a value that's itself still moving."""
     world = state.world
     log: list[str] = []
     for node in world.nodes.values():
@@ -72,7 +74,7 @@ def apply_price_shift(state: GameState) -> list[str]:
             continue
         multiplier = _threat_multiplier(node.id, world)
         for good_id, current in list(node.prices.items()):
-            base = BASE_PRICE.get(good_id, current)
+            base = BASE_PRICE.get(good_id, DEFAULT_BASE_PRICE)
             target = round(base * multiplier)
             new_price = _step_toward(current, target, PRICE_STEP)
             if new_price == current:

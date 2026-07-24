@@ -1,5 +1,5 @@
 from demonclock.clock import Clock
-from demonclock.economy import BASE_PRICE, apply_price_shift
+from demonclock.economy import BASE_PRICE, DEFAULT_BASE_PRICE, apply_price_shift
 from demonclock.models import Node
 from demonclock.player import new_player
 from demonclock.state import GameState
@@ -87,6 +87,21 @@ def test_nodes_without_tracked_prices_are_untouched():
     log = apply_price_shift(state)
 
     assert world.nodes["a"].prices == {}
+    assert log == []
+
+
+def test_a_good_with_no_base_price_entry_still_converges_instead_of_drifting_forever():
+    world = make_world("a")
+    world.nodes["a"].state = "occupied"
+    world.nodes["a"].prices = {"iron": DEFAULT_BASE_PRICE}  # "iron" is not in BASE_PRICE
+    state = make_state(world)
+
+    # run well past however many ticks convergence should take
+    for _ in range(50):
+        apply_price_shift(state)
+
+    assert world.nodes["a"].prices["iron"] == round(DEFAULT_BASE_PRICE * 2.0)  # settles at the occupied target
+    log = apply_price_shift(state)  # one more tick: no further movement
     assert log == []
 
 

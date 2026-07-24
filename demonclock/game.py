@@ -48,6 +48,11 @@ GAME_OVER_MESSAGES = {
     "defeat": "*** You have fallen before the Demon King. There is no rising from this one. Your story ends here. ***",
 }
 
+# Step 8 P5: caps how many rumors "Ask Around" prints — rumors.rumors_reaching
+# already sorts nearest (most confident) first, so this just shows the most
+# relevant handful instead of an unbounded dump of everything reachable.
+MAX_RUMORS_SHOWN = 5
+
 
 def new_game(player_name: str) -> GameState:
     world = new_default_world()
@@ -252,14 +257,16 @@ def handle_ask_around(state: GameState) -> None:
     player's CURRENT node, engine-derived from history.LogEntry, never
     AI-invented. Distinct from Atlas: a rumor carries its own confidence
     and may be distorted by distance, whereas Atlas beliefs are only ever
-    written by direct physical observation (knowledge.observe_node)."""
+    written by direct physical observation (knowledge.observe_node). Shows
+    at most MAX_RUMORS_SHOWN (Step 8 P5) — rumors.rumors_reaching already
+    sorts nearest/most-confident first, so this caps display, not relevance."""
     heard = rumors.rumors_reaching(state.world, state.player.location_id, state.clock.current_day)
     if not heard:
         print("No one here has heard anything worth repeating.")
         return
     print("--- Word around here ---")
     hint = behavior.derived_role_hint(state.player.behavior)
-    for rumor in heard:
+    for rumor in heard[:MAX_RUMORS_SHOWN]:
         text = reword_rumor(state.generation, rumor.text, rumor.confidence, hint)
         print(f"  ({rumor.confidence:.0%} sure) {text}")
 

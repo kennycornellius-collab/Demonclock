@@ -1,7 +1,7 @@
 from demonclock.events import EventKind
 from demonclock.history import record
 from demonclock.models import Node
-from demonclock.rumors import rumors_reaching
+from demonclock.rumors import MAX_RUMOR_AGE_DAYS, rumors_reaching
 from demonclock.world import World
 
 
@@ -85,14 +85,38 @@ def test_hop_distance_ignores_travel_days_and_uses_the_shortest_hop_path():
     assert rumors[0].hops == 1  # reached via the direct 1-hop link despite its huge travel_days
 
 
+def test_an_event_older_than_the_recency_cutoff_is_excluded():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="A falls.")
+
+    just_within = rumors_reaching(world, "b", current_day=MAX_RUMOR_AGE_DAYS)
+    just_beyond = rumors_reaching(world, "b", current_day=MAX_RUMOR_AGE_DAYS + 1)
+
+    assert len(just_within) == 1  # hops=1 already satisfied ages ago; still within the recency window
+    assert just_beyond == []  # same event, one day past the cutoff -- now old news
+
+
+def test_recency_cutoff_does_not_exclude_a_recent_event_behind_an_older_one():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="Old event.")
+    record(world.event_log, day=MAX_RUMOR_AGE_DAYS + 1, node_id="a", kind=EventKind.SET_NODE_STATE, description="Recent event.")
+
+    heard = rumors_reaching(world, "b", current_day=MAX_RUMOR_AGE_DAYS + 10)
+
+    assert len(heard) == 1  # the old entry aged out, the recent one didn't
+    assert heard[0].day_originated == MAX_RUMOR_AGE_DAYS + 1
+
+
 def test_confidence_decays_with_hop_distance():
     world = make_world("a", "b", "c")
     world.add_link("a", "b", "north", travel_days=1)
     world.add_link("b", "c", "north", travel_days=1)
     record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="A falls.")
 
-    near = rumors_reaching(world, "b", current_day=50)[0]
-    far = rumors_reaching(world, "c", current_day=50)[0]
+    near = rumors_reaching(world, "b", current_day=2)[0]
+    far = rumors_reaching(world, "c", current_day=2)[0]
 
     assert far.confidence < near.confidence
 
@@ -103,9 +127,9 @@ def test_distortion_increases_with_hop_distance_and_is_deterministic():
     world.add_link("b", "c", "north", travel_days=1)
     record(world.event_log, day=0, node_id="a", kind=EventKind.SET_NODE_STATE, description="A falls.")
 
-    near = rumors_reaching(world, "b", current_day=50)[0]
-    far = rumors_reaching(world, "c", current_day=50)[0]
-    far_again = rumors_reaching(world, "c", current_day=50)[0]
+    near = rumors_reaching(world, "b", current_day=2)[0]
+    far = rumors_reaching(world, "c", current_day=2)[0]
+    far_again = rumors_reaching(world, "c", current_day=2)[0]
 
     assert near.text != far.text
     assert far_again.text == far.text  # same distance, same event -> identical wording every time

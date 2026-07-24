@@ -39,6 +39,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
+from .history import LogEntry
 from .world import World
 
 HOPS_PER_DAY = 1
@@ -47,6 +48,13 @@ HOPS_PER_DAY = 1
 # (SPEC.md §11: start rough, calibrate by feel).
 CONFIDENCE_DECAY_PER_HOP = 0.8
 MIN_CONFIDENCE = 0.1
+
+# Step 8 P5: bounds rumors_reaching's cost to a recent window instead of the
+# whole, never-pruned event_log (SPEC.md §0 pillar 5's "never reason over the
+# entire accumulated pile," applied here too) — an event this old is already
+# old news, not live gossip. Same "start rough, calibrate by feel" status as
+# every other tuning constant here.
+MAX_RUMOR_AGE_DAYS = 30
 
 # Indexed by hop distance (clamped to the last entry beyond this length) —
 # not randomness: the SAME event, asked about from the SAME distance,
@@ -95,30 +103,39 @@ def _distort(description: str, hops: int) -> str:
     return _DISTORTION_TEMPLATES[index].format(desc=description)
 
 
-def rumors_reaching(world: World, node_id: str, current_day: int) -> list[Rumor]:
-    """Every rumor that has had time to reach `node_id` by `current_day`,
-    nearest (most confident, least distorted) first. A node never gets a
-    rumor about its own logged events — you'd know that directly, not
-    secondhand (see knowledge.py's belief layer for that channel).
+def _recent_entries(world: World, current_day: int) -> list[LogEntry]:
+    """The slice of `world.event_log` within `MAX_RUMOR_AGE_DAYS` (Step 8
+    P5). `event_log` is append-only and always appended in non-decreasing
+    `day` order (every entry is stamped with the clock's current day at the
+    moment it fires, and the clock never runs backward — see sim.py's tick
+    ordering), so walking backward from the newest entry and stopping the
+    instant one is too old bounds the scan to the recent window itself,
+    rather than filtering the whole ever-growing list on every call."""
+    recent: list[LogEntry] = []
+    for entry in reversed(world.event_log):
+        if current_day - entry.day > MAX_RUMOR_AGE_DAYS:
+            break
+        recent.append(entry)
+    return recent
 
-    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): runs a
-    fresh BFS (`_hop_distance`) from EVERY entry in `world.event_log` on
-    every single call, and `world.event_log` is append-only and never
-    pruned (SPEC.md §9) — this function's cost grows with the total game
-    history, not with anything bounded, the same category of problem
-    SPEC.md §0 pillar 5 explicitly warns against for generation ("never
-    let generation reason over the entire accumulated pile"), just applied
-    to a different subsystem here. `game.handle_ask_around` also prints
-    every rumor returned with no cap. UPDATE (Step 6 Chunk A): `newspaper.
-    leaked_since` now calls this function TWICE per Rest (a before/after
-    snapshot), so this cost is paid twice on every single night's sleep,
-    not just once per manual "Ask Around" — the same underlying gap, now
-    with a second, more frequent caller. Fine for a small hand-seeded
-    world; revisit (a recency cutoff, an index by node, or a display cap)
-    if a long playthrough's event log ever makes Rest or "Ask Around"
-    noticeably slow or noisy."""
+
+def rumors_reaching(world: World, node_id: str, current_day: int) -> list[Rumor]:
+    """Every rumor from the last MAX_RUMOR_AGE_DAYS that has had time to
+    reach `node_id` by `current_day`, nearest (most confident, least
+    distorted) first. A node never gets a rumor about its own logged
+    events — you'd know that directly, not secondhand (see knowledge.py's
+    belief layer for that channel).
+
+    Bounded cost (Step 8 P5): only runs a fresh BFS (`_hop_distance`) per
+    entry in the recent window (`_recent_entries`), not per entry in the
+    whole, never-pruned `world.event_log` — this function's cost no longer
+    grows with total game history, the same "bounded retrieved slice"
+    discipline `generation/context.py` already enforces for generation,
+    applied here too. `newspaper.leaked_since` calls this function TWICE per
+    Rest (a before/after snapshot), so this bound benefits both call sites,
+    not just a manual Ask Around."""
     rumors: list[Rumor] = []
-    for entry in world.event_log:
+    for entry in _recent_entries(world, current_day):
         if entry.node_id == node_id:
             continue
         hops = _hop_distance(world, entry.node_id, node_id)

@@ -69,15 +69,12 @@ def validate_event(event: ScheduledEvent) -> None:
     `apply_event`'s job at fire time, since the world may have changed
     between scheduling and firing.
 
-    KNOWN SIMPLIFICATION (found in a caveat sweep, not yet fixed): this
-    function is never actually called anywhere — not from
-    `World.schedule_event`, not from `sim.apply_event`, not from any test.
-    A malformed `ScheduledEvent` (missing a required payload key, e.g. from
-    a future generation-authored event) currently fails at FIRE time as a
-    raw `KeyError` inside `apply_event`'s payload dict access, not the clean
-    `EventError` this function exists to raise. Revisit by calling this from
-    `World.schedule_event` (or wherever a `ScheduledEvent` first gets
-    constructed from untrusted/generated data)."""
+    Called from `sim.apply_event` itself (Step 8 P2) — the one real call
+    path where a malformed `ScheduledEvent` (missing a required payload key,
+    e.g. from a future generation-authored event) used to fail as a raw
+    `KeyError` from `apply_event`'s own payload dict access; it now raises
+    this function's clean `EventError` instead, before any payload key is
+    touched."""
     required = _REQUIRED_PAYLOAD_KEYS[event.kind]
     missing = [key for key in required if key not in event.payload]
     if missing:

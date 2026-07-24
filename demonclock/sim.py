@@ -24,7 +24,7 @@ before this function ever had anything real to call, and unchanged since).
 from __future__ import annotations
 
 from . import behavior, economy, history
-from .events import EventKind, ScheduledEvent
+from .events import EventKind, ScheduledEvent, validate_event
 from .state import GameState
 
 # Placeholder tuning constants — same status as combat.py's DOT_DURATION etc.
@@ -36,7 +36,13 @@ PRICE_SHIFT_INTERVAL_DAYS = 3
 def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
     """Resolves one scheduled event's state change, always through World's
     existing atomic primitives (block_link/unblock_link) — never a direct row
-    mutation (SPEC.md §0 pillar 6). Returns narration line(s)."""
+    mutation (SPEC.md §0 pillar 6). Returns narration line(s).
+
+    Validates the payload's required keys (events.validate_event) before
+    touching it, so a malformed event — e.g. one authored by a future
+    generation step rather than hand-built content — fails fast with a clean
+    EventError instead of a raw KeyError partway through a state mutation."""
+    validate_event(event)
     world = state.world
     payload = event.payload
 

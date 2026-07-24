@@ -1,7 +1,7 @@
 import pytest
 
 from demonclock.clock import Clock
-from demonclock.events import EventKind, ScheduledEvent
+from demonclock.events import EventError, EventKind, ScheduledEvent
 from demonclock.models import Node
 from demonclock.player import new_player
 from demonclock.sim import (
@@ -64,6 +64,20 @@ def test_apply_event_set_node_state_flips_state():
     apply_event(state, event)
 
     assert world.nodes["a"].state == "occupied"
+
+
+def test_apply_event_raises_a_clean_error_for_a_malformed_event():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    state = make_state(world)
+    # missing the required "reason" key
+    event = ScheduledEvent(due_day=0, kind=EventKind.BLOCK_LINK, payload={"from_id": "a", "to_id": "b"})
+
+    with pytest.raises(EventError):
+        apply_event(state, event)
+
+    # rejected before any mutation -- not a raw KeyError partway through
+    assert world.get_link("a", "b").status == "open"
 
 
 def test_apply_event_uses_custom_description_when_present():

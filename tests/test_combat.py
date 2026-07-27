@@ -1,6 +1,6 @@
 import random
 
-from demonclock.combat import Combatant, CombatResult, apply_skill, run_combat, turn_order
+from demonclock.combat import CRIT_MULTIPLIER, VARIANCE, Combatant, CombatResult, apply_skill, run_combat, turn_order
 from demonclock.enemies import make_enemy
 from demonclock.models import Player
 from demonclock.skills import BASIC_ATTACK, Effect, EffectKind, Skill, StatType
@@ -20,17 +20,20 @@ def make_combatant(**kwargs) -> Combatant:
 
 class _RiggedRNG:
     """A random.Random stand-in with a fixed .random() roll, for deterministic
-    dodge/crit tests -- .uniform() returns the midpoint of its range (neutral,
-    no jitter), used by Step 9 Chunk B's variance tests."""
+    dodge/crit tests. .uniform() defaults to the midpoint of its range
+    (neutral, no jitter) unless an explicit `variance` roll is given -- lets
+    a dodge/crit test stay indifferent to Step 9 Chunk B's variance jitter
+    while a dedicated variance test can still control it precisely."""
 
-    def __init__(self, roll: float):
+    def __init__(self, roll: float, variance: float | None = None):
         self.roll = roll
+        self.variance = variance
 
     def random(self) -> float:
         return self.roll
 
     def uniform(self, a: float, b: float) -> float:
-        return (a + b) / 2
+        return self.variance if self.variance is not None else (a + b) / 2
 
 
 def test_basic_attack_applies_defense_mitigation():
@@ -102,6 +105,76 @@ def test_no_rng_means_dodge_is_disabled_entirely():
 
     assert defender.hp < 100
     assert not any("dodges" in line for line in log)
+
+
+# --- Step 9 Chunk B: crit + variance ------------------------------------------
+
+def test_a_low_roll_crits_and_multiplies_damage_before_mitigation():
+    # agility=100 vs. defender's agility=1 clamps dodge chance to exactly 0
+    # (0.0 < 0.0 is False), isolating the SAME low roll to only ever trigger
+    # the crit check that follows it.
+    attacker = make_combatant(strength=10, agility=100, luck=10)
+    defender = make_combatant(hp=1000, hp_max=1000, defense=0, agility=1)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.0))
+
+    # magnitude = 20*1.0 + 10 = 30; crit multiplies by CRIT_MULTIPLIER before
+    # mitigation; variance defaults to the midpoint (no jitter) in _RiggedRNG.
+    expected = round(30 * CRIT_MULTIPLIER)
+    assert defender.hp == 1000 - expected
+    assert any("Critical hit!" in line for line in log)
+
+
+def test_a_high_roll_never_crits():
+    attacker = make_combatant(strength=10, agility=100, luck=10)
+    defender = make_combatant(hp=1000, hp_max=1000, defense=0, agility=1)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.999))
+
+    assert defender.hp == 1000 - 30  # unmultiplied magnitude, no jitter
+    assert not any("Critical hit!" in line for line in log)
+
+
+def test_zero_luck_never_crits_even_on_a_zero_roll():
+    # BASE_CRIT alone (no LUCK bonus) is still a nonzero chance, so this only
+    # proves luck=0 (the Combatant default for enemies/bosses/adds) doesn't
+    # itself disable crit -- BASE_CRIT does the isolating in the two tests
+    # above by using a defender AGILITY high enough to zero out dodge first.
+    attacker = make_combatant(strength=10, agility=100, luck=0)
+    defender = make_combatant(hp=1000, hp_max=1000, defense=0, agility=1)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.0))
+
+    assert any("Critical hit!" in line for line in log)  # BASE_CRIT=0.05 > 0.0
+
+
+def test_variance_jitters_damage_up_or_down_around_the_base_magnitude():
+    attacker = make_combatant(strength=10, agility=100)  # luck=0, never crits at roll=0.999
+    low = make_combatant(hp=1000, hp_max=1000, defense=0, agility=1)
+    high = make_combatant(hp=1000, hp_max=1000, defense=0, agility=1)
+    log = []
+
+    apply_skill(attacker, low, BASIC_ATTACK, log, rng=_RiggedRNG(0.999, variance=1 - VARIANCE))
+    apply_skill(attacker, high, BASIC_ATTACK, log, rng=_RiggedRNG(0.999, variance=1 + VARIANCE))
+
+    assert (1000 - low.hp) < (1000 - high.hp)
+
+
+def test_dodge_still_takes_priority_over_crit_and_variance():
+    # Equal AGILITY -> BASE_DODGE alone (0.05) is a nonzero chance, so a
+    # roll of 0.0 dodges rather than falling through to crit/variance.
+    attacker = make_combatant(strength=10, agility=10, luck=100)
+    defender = make_combatant(hp=1000, hp_max=1000, defense=0, agility=10)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.0))
+
+    assert defender.hp == 1000
+    assert any("dodges" in line for line in log)
+    assert not any("Critical hit!" in line for line in log)
 
 
 def test_turn_order_faster_combatant_acts_first():

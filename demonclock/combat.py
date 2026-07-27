@@ -3,15 +3,18 @@ fair-cost check wired in: the moment the player CASTS a learned skill whose
 actual cost undercuts `skills.compute_fair_cost` on any dimension, this sets
 `Player.creative_mode_used` (never at authoring time — see skills.py).
 
-Step 9, Chunk A: an injectable `random.Random` (SPEC.md §6b's RNG design) is
-now threaded through `run_combat`, defaulting to a fresh instance so real play
-gets it for free, but overridable (including with a matched seed) so a fight
-stays exactly as reproducible as it was pre-RNG. The only roll wired up this
-chunk is AGILITY-based dodge — a dodge skips damage resolution for that hit
-entirely (no mitigation/shield/lifesteal), narrated as a miss, not a 0-damage
-hit. Crit and damage variance land in Chunk B, inside the same DAMAGE branch
-dodge now gates. Only the `DAMAGE` effect ever rolls — DOT/HEAL/SHIELD/etc.
-stay exactly as deterministic as before.
+Step 9 (SPEC.md §6b's RNG design, built as two chunks): an injectable
+`random.Random` is threaded through `run_combat`, defaulting to a fresh
+instance so real play gets it for free, but overridable (including with a
+matched seed) so a fight stays exactly as reproducible as it was pre-RNG.
+Chunk A wired up AGILITY-based dodge — a dodge skips damage resolution for
+that hit entirely (no mitigation/shield/lifesteal), narrated as a miss, not a
+0-damage hit. Chunk B adds the other two rolls, both inside the damage path
+dodge gates: a LUCK-based crit (`Combatant.luck`, new this chunk) multiplies
+`magnitude` by `CRIT_MULTIPLIER` before mitigation, then every surviving hit
+(crit or not) gets a small multiplicative variance jitter. Only the `DAMAGE`
+effect ever rolls — DOT/HEAL/SHIELD/etc. stay exactly as deterministic as
+before.
 
 Effect targeting is a fixed default this stage (no ally/multi-enemy selection
 UI exists yet): harmful effects (damage/stun/dot/debuff) hit the opponent;
@@ -60,6 +63,16 @@ BASE_DODGE = 0.05
 DODGE_PER_AGI = 0.01
 DODGE_CAP = 0.35
 
+# Crit is rolled on the attacker, using raw LUCK (not effective_stat — LUCK
+# isn't in skills.StatType, so it's never buffable/debuffable, unlike AGILITY
+# above). Damage variance applies to every surviving (non-dodged) hit,
+# crit or not.
+BASE_CRIT = 0.05
+CRIT_PER_LUCK = 0.01
+CRIT_CAP = 0.5
+CRIT_MULTIPLIER = 1.5
+VARIANCE = 0.15
+
 _EFFECT_ORDER = [
     EffectKind.DAMAGE, EffectKind.HEAL, EffectKind.LIFESTEAL, EffectKind.SHIELD,
     EffectKind.STUN, EffectKind.DOT, EffectKind.BUFF, EffectKind.DEBUFF,
@@ -92,6 +105,11 @@ class Combatant:
     magic: int = 0
     mana: int = 0
     mana_max: int = 0
+    # Step 9: feeds crit chance only (see BASE_CRIT/CRIT_PER_LUCK above).
+    # Defaults to 0 for enemies/bosses/adds/the environment actor, none of
+    # which are given an explicit luck today — they simply never crit, same
+    # "start rough" status as their never casting a learned skill.
+    luck: int = 0
     skills: list[Skill] = field(default_factory=list)
     shield: int = 0
     stun_turns: int = 0
@@ -117,6 +135,7 @@ class Combatant:
             magic=player.magic,
             mana=player.mana,
             mana_max=player.mana_max,
+            luck=player.luck,
             skills=list(player.skills),
         )
 
@@ -141,6 +160,24 @@ def _roll_dodge(defender: Combatant, attacker: Combatant, rng: random.Random) ->
     chance = effective_stat(defender, StatType.AGILITY) - effective_stat(attacker, StatType.AGILITY)
     chance = min(DODGE_CAP, max(0.0, BASE_DODGE + chance * DODGE_PER_AGI))
     return rng.random() < chance
+
+
+def _roll_crit(attacker: Combatant, rng: random.Random) -> bool:
+    """SPEC.md §6b: rolled on the attacker, only once dodge has failed to
+    trigger. LUCK is never negative (Player's own default/fixed attribute
+    set has no floor enforcement below 0 today, but nothing authors a
+    negative one either), so this chance never needs the max(0.0, ...) floor
+    _roll_dodge's AGILITY-difference version does."""
+    chance = min(CRIT_CAP, BASE_CRIT + attacker.luck * CRIT_PER_LUCK)
+    return rng.random() < chance
+
+
+def _apply_variance(magnitude: int, rng: random.Random) -> int:
+    """SPEC.md §6b: every surviving (non-dodged) hit, crit or not, gets a
+    small multiplicative jitter so identical stats don't always print an
+    identical number. Floored at 1 — variance should never zero out a hit
+    that dodge already let through."""
+    return max(1, round(magnitude * rng.uniform(1 - VARIANCE, 1 + VARIANCE)))
 
 
 def _magnitude(caster: Combatant, skill: Skill) -> int:
@@ -206,7 +243,13 @@ def apply_skill(
                 log.append(f"{opponent.name} dodges {caster.name}'s {skill.name}!")
                 dealt = 0
             else:
-                dealt = _deal_damage(caster, opponent, magnitude, skill, log)
+                hit_magnitude = magnitude
+                if rng is not None:
+                    if _roll_crit(caster, rng):
+                        hit_magnitude = round(hit_magnitude * CRIT_MULTIPLIER)
+                        log.append("Critical hit!")
+                    hit_magnitude = _apply_variance(hit_magnitude, rng)
+                dealt = _deal_damage(caster, opponent, hit_magnitude, skill, log)
 
         elif effect.kind is EffectKind.HEAL:
             healed = min(magnitude, caster.hp_max - caster.hp)

@@ -28,6 +28,7 @@ mechanic.
 from __future__ import annotations
 
 import copy
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -143,6 +144,7 @@ def run_encounter(
     player: Player,
     encounter: Encounter,
     choose_action: ChooseAction,
+    rng: random.Random | None = None,
 ) -> tuple[EncounterResult, list[str]]:
     """Resolves a multi-phase boss fight to VICTORY/DEFEAT/FLED.
 
@@ -161,6 +163,11 @@ def run_encounter(
     future content-pool item) is never mutated by playing it — the same
     fight can be attempted again after a flee or a defeat.
 
+    `rng` (Step 9, SPEC.md §6b) is the same injectable dodge/crit/variance
+    source `combat.run_combat` takes — defaults to a fresh `random.Random()`,
+    threaded into every `apply_skill` call this function makes (fighter,
+    boss/adds, and environment skills alike).
+
     Guaranteed to terminate (Step 8 P4): after MAX_ENCOUNTER_ROUNDS rounds
     across the WHOLE encounter (not reset per phase — an immortal add or an
     unreachable HP_THRESHOLD would otherwise stall a phase forever), the
@@ -168,6 +175,7 @@ def run_encounter(
     the player choosing to flee, and, like combat.run_combat, resettable on
     a later attempt.
     """
+    rng = rng if rng is not None else random.Random()
     fighter = Combatant.from_player(player)
     boss = copy.deepcopy(encounter.boss)
     environment_actor = Combatant(
@@ -223,9 +231,9 @@ def run_encounter(
                 fighter.mana = max(0, fighter.mana - skill.mana_cost)
                 if skill.cooldown > 0:
                     fighter.cooldowns[skill.id] = skill.cooldown
-                apply_skill(fighter, target, skill, log)
+                apply_skill(fighter, target, skill, log, rng)
             else:
-                apply_skill(actor, fighter, BASIC_ATTACK, log)
+                apply_skill(actor, fighter, BASIC_ATTACK, log, rng)
 
             if fighter.hp <= 0:
                 break
@@ -235,7 +243,7 @@ def run_encounter(
             return EncounterResult.DEFEAT, log
 
         for env_skill in phase.environment_skills:
-            apply_skill(environment_actor, fighter, env_skill, log)
+            apply_skill(environment_actor, fighter, env_skill, log, rng)
             player.hp = fighter.hp
             if fighter.hp <= 0:
                 return EncounterResult.DEFEAT, log

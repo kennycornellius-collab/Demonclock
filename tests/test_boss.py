@@ -37,6 +37,18 @@ def make_add(name="Cultist", **kwargs) -> Combatant:
     return Combatant(**defaults)
 
 
+class _NeverRollRNG:
+    """A random.Random stand-in that never dodges/crits and applies zero
+    variance jitter (Step 9) -- for tests asserting exact damage numbers,
+    since run_encounter defaults to a real, non-reproducible random.Random()."""
+
+    def random(self) -> float:
+        return 1.0
+
+    def uniform(self, a: float, b: float) -> float:
+        return (a + b) / 2
+
+
 def attack_boss(fighter, boss, active_adds, usable):
     return BASIC_ATTACK, boss
 
@@ -184,12 +196,15 @@ def test_environment_skill_damages_the_player_every_round():
             return None
         return BASIC_ATTACK, boss
 
-    result, log = run_encounter(player, encounter, choose_action=chooser)
+    result, log = run_encounter(player, encounter, choose_action=chooser, rng=_NeverRollRNG())
 
     assert result is EncounterResult.FLED
     # boss's own attack (strength 0 -> magnitude 20, player defense 0 -> 20
     # unmitigated) + one environment tick (environment actor's hardcoded
-    # magic 10 + scorch's base_damage 10 -> magnitude 20, also unmitigated)
+    # magic 10 + scorch's base_damage 10 -> magnitude 20, also unmitigated).
+    # Step 9: pinned to a never-rolls rng since the player's own AGILITY
+    # advantage here would otherwise give a real random.Random() a nonzero
+    # chance to dodge one of these two hits.
     assert player.hp == 100 - 20 - 20
 
 

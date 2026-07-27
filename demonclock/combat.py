@@ -3,8 +3,15 @@ fair-cost check wired in: the moment the player CASTS a learned skill whose
 actual cost undercuts `skills.compute_fair_cost` on any dimension, this sets
 `Player.creative_mode_used` (never at authoring time — see skills.py).
 
-Deterministic on purpose, still: no damage variance, no dodge, no crit. RNG
-is planned for a later combat stage — see SPEC.md §6b's forward-note.
+Step 9, Chunk A: an injectable `random.Random` (SPEC.md §6b's RNG design) is
+now threaded through `run_combat`, defaulting to a fresh instance so real play
+gets it for free, but overridable (including with a matched seed) so a fight
+stays exactly as reproducible as it was pre-RNG. The only roll wired up this
+chunk is AGILITY-based dodge — a dodge skips damage resolution for that hit
+entirely (no mitigation/shield/lifesteal), narrated as a miss, not a 0-damage
+hit. Crit and damage variance land in Chunk B, inside the same DAMAGE branch
+dodge now gates. Only the `DAMAGE` effect ever rolls — DOT/HEAL/SHIELD/etc.
+stay exactly as deterministic as before.
 
 Effect targeting is a fixed default this stage (no ally/multi-enemy selection
 UI exists yet): harmful effects (damage/stun/dot/debuff) hit the opponent;
@@ -14,6 +21,7 @@ until multi-enemy/positional combat exists.
 """
 from __future__ import annotations
 
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -43,6 +51,14 @@ LIFESTEAL_FRACTION = 0.5
 # build outpacing a weak enemy's damage) — generous enough not to truncate
 # any real fight, low enough to guarantee run_combat always returns.
 MAX_COMBAT_ROUNDS = 100
+
+# Step 9 (SPEC.md §6b), "start rough, calibrate by feel" placeholders, same
+# status as DOT_DURATION etc. above. Dodge is rolled on the defender, using
+# the attacker's AND defender's post-buff AGILITY (effective_stat) — the same
+# stat that already drives turn order, paying off again here.
+BASE_DODGE = 0.05
+DODGE_PER_AGI = 0.01
+DODGE_CAP = 0.35
 
 _EFFECT_ORDER = [
     EffectKind.DAMAGE, EffectKind.HEAL, EffectKind.LIFESTEAL, EffectKind.SHIELD,
@@ -120,6 +136,13 @@ def effective_stat(combatant: Combatant, stat: StatType) -> int:
     return max(0, base + delta)
 
 
+def _roll_dodge(defender: Combatant, attacker: Combatant, rng: random.Random) -> bool:
+    """SPEC.md §6b: rolled on the defender before damage is computed."""
+    chance = effective_stat(defender, StatType.AGILITY) - effective_stat(attacker, StatType.AGILITY)
+    chance = min(DODGE_CAP, max(0.0, BASE_DODGE + chance * DODGE_PER_AGI))
+    return rng.random() < chance
+
+
 def _magnitude(caster: Combatant, skill: Skill) -> int:
     """SPEC.md §6b damage formula, generalized: every effect on a skill draws
     from the same power budget rather than each having its own tunable
@@ -158,17 +181,32 @@ def _deal_damage(caster: Combatant, target: Combatant, magnitude: int, skill: Sk
     return lost
 
 
-def apply_skill(caster: Combatant, opponent: Combatant, skill: Skill, log: list[str]) -> None:
+def apply_skill(
+    caster: Combatant, opponent: Combatant, skill: Skill, log: list[str],
+    rng: random.Random | None = None,
+) -> None:
     """Resolves every effect on `skill` in a fixed canonical order (not
     authoring order) so cross-effect dependencies — e.g. LIFESTEAL needs
     DAMAGE's result — are always well-defined regardless of how the skill's
-    effects list was composed."""
+    effects list was composed.
+
+    `rng` gates Step 9's dodge/crit/variance rolls (DAMAGE effect only —
+    every other effect is unaffected): `None` (the default) disables them
+    entirely, reproducing this function's pre-Step-9 fully deterministic
+    behavior, which is what every direct `apply_skill(...)` call in the test
+    suite still relies on. `run_combat`/`run_encounter` always pass a real
+    `random.Random` instance.
+    """
     magnitude = _magnitude(caster, skill)
     dealt = 0
 
     for effect in sorted(skill.effects, key=lambda e: _EFFECT_PRIORITY[e.kind]):
         if effect.kind is EffectKind.DAMAGE:
-            dealt = _deal_damage(caster, opponent, magnitude, skill, log)
+            if rng is not None and _roll_dodge(opponent, caster, rng):
+                log.append(f"{opponent.name} dodges {caster.name}'s {skill.name}!")
+                dealt = 0
+            else:
+                dealt = _deal_damage(caster, opponent, magnitude, skill, log)
 
         elif effect.kind is EffectKind.HEAL:
             healed = min(magnitude, caster.hp_max - caster.hp)
@@ -265,6 +303,7 @@ def run_combat(
     enemy: Combatant,
     choose_action: Callable[[Combatant, Combatant, list[Skill]], Skill | None],
     current_day: int = 0,
+    rng: random.Random | None = None,
 ) -> tuple[CombatResult, list[str]]:
     """Resolves a fight to VICTORY/DEFEAT/FLED.
 
@@ -280,6 +319,12 @@ def run_combat(
     a captured player's guaranteed release day (setback.py) on DEFEAT; it
     defaults to 0 since most tests don't care about the exact day.
 
+    `rng` (Step 9, SPEC.md §6b) drives dodge/crit/variance — defaults to a
+    fresh `random.Random()` so real play gets working RNG combat with no
+    caller changes, but a test can inject a seeded (or rigged) instance to
+    keep a fight fully reproducible; the same seed passed to two separate
+    calls reproduces an identical fight.
+
     Guaranteed to terminate (Step 8 P4): after MAX_COMBAT_ROUNDS full rounds
     with neither side dead — e.g. a heal/shield-only build outpacing a weak
     enemy's damage — the fight is forced to a stalemate FLED, the same
@@ -289,6 +334,7 @@ def run_combat(
     that matters the moment `choose_action` is ever driven by a script or a
     future automated/AI opponent.
     """
+    rng = rng if rng is not None else random.Random()
     fighter = Combatant.from_player(player)
     log: list[str] = []
     order = turn_order(fighter, enemy)
@@ -331,7 +377,7 @@ def run_combat(
             actor.mana = max(0, actor.mana - skill.mana_cost)
             if skill.cooldown > 0:
                 actor.cooldowns[skill.id] = skill.cooldown
-            apply_skill(actor, opponent, skill, log)
+            apply_skill(actor, opponent, skill, log, rng)
 
     player.hp = fighter.hp
     player.mana = fighter.mana

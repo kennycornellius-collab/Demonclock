@@ -1,3 +1,5 @@
+import random
+
 from demonclock.combat import Combatant, CombatResult, apply_skill, run_combat, turn_order
 from demonclock.enemies import make_enemy
 from demonclock.models import Player
@@ -14,6 +16,21 @@ def make_combatant(**kwargs) -> Combatant:
     defaults = dict(name="Foe", hp=10, hp_max=10, strength=5, agility=5, defense=0)
     defaults.update(kwargs)
     return Combatant(**defaults)
+
+
+class _RiggedRNG:
+    """A random.Random stand-in with a fixed .random() roll, for deterministic
+    dodge/crit tests -- .uniform() returns the midpoint of its range (neutral,
+    no jitter), used by Step 9 Chunk B's variance tests."""
+
+    def __init__(self, roll: float):
+        self.roll = roll
+
+    def random(self) -> float:
+        return self.roll
+
+    def uniform(self, a: float, b: float) -> float:
+        return (a + b) / 2
 
 
 def test_basic_attack_applies_defense_mitigation():
@@ -34,6 +51,57 @@ def test_basic_attack_damage_floors_at_one():
     apply_skill(attacker, tank, BASIC_ATTACK, [])
 
     assert tank.hp == 99
+
+
+# --- Step 9 Chunk A: dodge ---------------------------------------------------
+
+def test_a_low_roll_dodges_and_prevents_all_damage():
+    attacker = make_combatant(strength=50)
+    defender = make_combatant(hp=100, hp_max=100, defense=0)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.0))
+
+    assert defender.hp == 100
+    assert any("dodges" in line for line in log)
+
+
+def test_a_high_roll_never_dodges_and_damage_lands_normally():
+    attacker = make_combatant(strength=50)
+    defender = make_combatant(hp=100, hp_max=100, defense=0)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.999))
+
+    assert defender.hp < 100
+    assert any("hits" in line for line in log)
+
+
+def test_dodge_chance_clamps_to_zero_when_the_attacker_is_far_more_agile():
+    # BASE_DODGE plus a large negative AGILITY gap clamps to 0.0 -- even a
+    # rigged "always dodge" roll of 0.0 can't beat a 0.0 chance (0.0 < 0.0 is
+    # False), so the hit lands regardless.
+    attacker = make_combatant(strength=50, agility=100)
+    defender = make_combatant(hp=100, hp_max=100, defense=0, agility=1)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log, rng=_RiggedRNG(0.0))
+
+    assert defender.hp < 100
+
+
+def test_no_rng_means_dodge_is_disabled_entirely():
+    # The default (rng=None) reproduces this function's pre-Step-9 behavior
+    # exactly -- every existing apply_skill(...) call above this section in
+    # the test suite relies on this.
+    attacker = make_combatant(strength=50)
+    defender = make_combatant(hp=100, hp_max=100, defense=0)
+    log = []
+
+    apply_skill(attacker, defender, BASIC_ATTACK, log)
+
+    assert defender.hp < 100
+    assert not any("dodges" in line for line in log)
 
 
 def test_turn_order_faster_combatant_acts_first():
@@ -121,18 +189,39 @@ def test_run_combat_does_not_advance_anything_but_hp_and_mana():
     assert player.location_id == location_before
 
 
-def test_run_combat_is_deterministic():
+def test_run_combat_is_deterministic_given_a_matching_seed():
+    # Step 9: run_combat now defaults to a fresh, unseeded random.Random(),
+    # so two calls only reproduce the same fight if given matching seeds --
+    # this is the "a fixed seed must still reproduce a fixed fight"
+    # guarantee SPEC.md §6b asks for, not "combat has no RNG at all."
     def make_matchup():
         return make_player(strength=15, defense=5, agility=10, hp=60, hp_max=60), make_enemy("bramblewood_wolf")
 
     p1, e1 = make_matchup()
-    result1, log1 = run_combat(p1, e1, choose_action=lambda *_: BASIC_ATTACK)
+    result1, log1 = run_combat(p1, e1, choose_action=lambda *_: BASIC_ATTACK, rng=random.Random(1234))
 
     p2, e2 = make_matchup()
-    result2, log2 = run_combat(p2, e2, choose_action=lambda *_: BASIC_ATTACK)
+    result2, log2 = run_combat(p2, e2, choose_action=lambda *_: BASIC_ATTACK, rng=random.Random(1234))
 
     assert result1 is result2
     assert log1 == log2
+
+
+def test_run_combat_threads_rng_through_to_the_enemys_attacks_too():
+    # Equal AGILITY on both sides means BASE_DODGE (0.05) applies to either
+    # direction, so a rigged always-dodge roll of 0.0 makes BOTH sides evade
+    # every hit -- proves the rng argument actually reaches the enemy's turn,
+    # not just the player's.
+    player = make_player(strength=50, defense=0, agility=10, hp=50, hp_max=50)
+    enemy = make_combatant(name="Brute", hp=9999, hp_max=9999, strength=50, agility=10, defense=0)
+
+    result, log = run_combat(
+        player, enemy, choose_action=lambda *_: BASIC_ATTACK, rng=_RiggedRNG(0.0),
+    )
+
+    assert result is CombatResult.FLED  # round cap: neither side can ever land a hit
+    assert player.hp == 50
+    assert enemy.hp == 9999
 
 
 def test_casting_an_underpriced_skill_sets_creative_mode_used():

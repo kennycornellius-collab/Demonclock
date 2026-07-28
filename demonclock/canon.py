@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from . import factions
+
 if TYPE_CHECKING:
     from .state import GameState
 
@@ -43,6 +45,13 @@ class RequirementKind(str, Enum):
     # "bring me 5 grain" objective, mirroring PLAYER_GOLD_AT_LEAST's own
     # `amount` key rather than overloading PLAYER_HAS_ITEM's target shape.
     PLAYER_HAS_ITEM_QUANTITY_AT_LEAST = "player_has_item_quantity_at_least"
+    # Step 10 Stage 4 (SPEC §8's own worked example: "faction_standing
+    # (merchants): >= neutral"): target {faction_id, tier}, tier one of
+    # factions.STANDING_TIERS. No live trigger moves standing yet this
+    # stage — this is the checker half only, same "prove the plumbing
+    # before real content wires through it" shape every other
+    # RequirementKind here took.
+    FACTION_STANDING_AT_LEAST = "faction_standing_at_least"
 
 
 @dataclass
@@ -147,5 +156,12 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
         )
         passed = quantity >= amount
         return RequirementResult(req, passed, f"player has {quantity} of {item_id!r}, needs >= {amount}")
+
+    if req.kind is RequirementKind.FACTION_STANDING_AT_LEAST:
+        faction_id = req.target["faction_id"]
+        tier = req.target["tier"]
+        current = factions.standing_of(state.player, faction_id)
+        passed = factions.meets_standing(state.player, faction_id, tier)
+        return RequirementResult(req, passed, f"standing with {faction_id!r} is {current!r}, needs >= {tier!r}")
 
     raise ValueError(f"unhandled requirement kind: {req.kind!r}")  # unreachable given RequirementKind's closed enum

@@ -1,6 +1,6 @@
 import pytest
 
-from demonclock.models import NPC, Node
+from demonclock.models import NPC, Faction, Node
 from demonclock.world import World, WorldError
 
 
@@ -167,3 +167,11 @@ def test_npcs_at_returns_only_npcs_at_that_node():
 def test_npcs_at_returns_empty_list_for_a_node_with_no_npcs():
     world = make_world("a")
     assert world.npcs_at("a") == []
+
+
+# -- Factions (Step 10 Stage 4) ----------------------------------------------
+
+def test_add_faction_registers_it_by_id():
+    world = make_world("a")
+    faction = world.add_faction(Faction(id="merchants", name="The Merchant Guild"))
+    assert world.factions["merchants"] is faction

@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS player (
     captured INTEGER NOT NULL DEFAULT 0,
     ransom_cost INTEGER NOT NULL DEFAULT 0,
     free_by_day INTEGER,  -- NULL whenever not captured (setback.py, SPEC §11.1)
-    game_over TEXT  -- NULL while ongoing; 'victory'|'defeat' once resolved (boss.py, SPEC §11.1)
+    game_over TEXT,  -- NULL while ongoing; 'victory'|'defeat' once resolved (boss.py, SPEC §11.1)
+    faction_standing TEXT NOT NULL DEFAULT '{}'  -- JSON dict: faction_id -> tier (Step 10 Stage 4)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -108,7 +109,14 @@ CREATE TABLE IF NOT EXISTS npcs (
     name TEXT NOT NULL,
     location_id TEXT NOT NULL,
     description TEXT NOT NULL,
-    tags TEXT NOT NULL   -- JSON list (Step 10 Stage 3)
+    tags TEXT NOT NULL,   -- JSON list (Step 10 Stage 3)
+    faction_id TEXT   -- NULL means unaffiliated (Step 10 Stage 4)
+);
+
+CREATE TABLE IF NOT EXISTS factions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL   -- Step 10 Stage 4
 );
 
 CREATE TABLE IF NOT EXISTS meta (
@@ -153,6 +161,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM accepted_quests")
     conn.execute("DELETE FROM node_flavor")
     conn.execute("DELETE FROM npcs")
+    conn.execute("DELETE FROM factions")
 
     for node in world.nodes.values():
         conn.execute(
@@ -182,8 +191,8 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         "strength, magic, agility, defense, charisma, perception, luck, gold, "
         "creative_mode_used, trade_actions, combat_actions, dialogue_actions, "
         "crafting_actions, last_gold, gold_trend, recent_locations, captured, "
-        "ransom_cost, free_by_day, game_over) "
-        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "ransom_cost, free_by_day, game_over, faction_standing) "
+        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -211,6 +220,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             player.ransom_cost,
             player.free_by_day,
             player.game_over,
+            json.dumps(player.faction_standing),
         ),
     )
     for item in player.inventory:
@@ -255,8 +265,14 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         )
     for npc in world.npcs.values():
         conn.execute(
-            "INSERT INTO npcs (id, name, location_id, description, tags) VALUES (?, ?, ?, ?, ?)",
-            (npc.id, npc.name, npc.location_id, npc.description, json.dumps(npc.tags)),
+            "INSERT INTO npcs (id, name, location_id, description, tags, faction_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (npc.id, npc.name, npc.location_id, npc.description, json.dumps(npc.tags), npc.faction_id),
+        )
+    for faction in world.factions.values():
+        conn.execute(
+            "INSERT INTO factions (id, name, description) VALUES (?, ?, ?)",
+            (faction.id, faction.name, faction.description),
         )
 
     conn.execute(
@@ -288,7 +304,7 @@ def load_game(conn: sqlite3.Connection):
     from .events import ScheduledEvent
     from .history import LogEntry
     from .knowledge import NodeBelief
-    from .models import NPC, InventoryItem, Link, Node, Player
+    from .models import NPC, Faction, InventoryItem, Link, Node, Player
     from .pool import GeneratedItem
     from .skills import Skill
     from .world import World
@@ -328,8 +344,15 @@ def load_game(conn: sqlite3.Connection):
         r[0]: r[1] for r in conn.execute("SELECT node_id, text FROM node_flavor")
     }
     world.npcs = {
-        r[0]: NPC(id=r[0], name=r[1], location_id=r[2], description=r[3], tags=json.loads(r[4]))
-        for r in conn.execute("SELECT id, name, location_id, description, tags FROM npcs")
+        r[0]: NPC(
+            id=r[0], name=r[1], location_id=r[2], description=r[3], tags=json.loads(r[4]),
+            faction_id=r[5],
+        )
+        for r in conn.execute("SELECT id, name, location_id, description, tags, faction_id FROM npcs")
+    }
+    world.factions = {
+        r[0]: Faction(id=r[0], name=r[1], description=r[2])
+        for r in conn.execute("SELECT id, name, description FROM factions")
     }
     accepted_quests = [
         json.loads(r[0])
@@ -341,7 +364,7 @@ def load_game(conn: sqlite3.Connection):
         "agility, defense, charisma, perception, luck, gold, creative_mode_used, "
         "trade_actions, combat_actions, dialogue_actions, crafting_actions, "
         "last_gold, gold_trend, recent_locations, captured, ransom_cost, free_by_day, "
-        "game_over "
+        "game_over, faction_standing "
         "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
@@ -369,6 +392,7 @@ def load_game(conn: sqlite3.Connection):
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
         beliefs=beliefs, accepted_quests=accepted_quests, game_over=prow[25],
+        faction_standing=json.loads(prow[26]),
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

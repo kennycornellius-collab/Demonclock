@@ -4,7 +4,7 @@ from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.history import LogEntry
 from demonclock.knowledge import NodeBelief
-from demonclock.models import NPC, Node
+from demonclock.models import NPC, Faction, Node
 from demonclock.player import add_item, new_player
 from demonclock.pool import GeneratedItem
 from demonclock.seed import new_default_world
@@ -514,6 +514,92 @@ def test_npcs_default_to_empty_for_a_fresh_world_with_none_seeded(tmp_path):
     loaded_world, _, _ = db.load_game(conn)
 
     assert loaded_world.npcs == {}
+
+    conn.close()
+
+
+def test_npc_faction_id_round_trips_including_when_unaffiliated(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    world.add_npc(NPC(id="affiliated", name="Affiliated", location_id="a", faction_id="merchants"))
+    world.add_npc(NPC(id="unaffiliated", name="Unaffiliated", location_id="a"))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.npcs["affiliated"].faction_id == "merchants"
+    assert loaded_world.npcs["unaffiliated"].faction_id is None
+
+    conn.close()
+
+
+def test_factions_round_trip(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    world.add_faction(Faction(id="merchants", name="The Merchant Guild", description="Traders and financiers."))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.factions == world.factions
+
+    conn.close()
+
+
+def test_factions_default_to_empty_for_a_fresh_world(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.factions == {}
+
+    conn.close()
+
+
+def test_player_faction_standing_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a")
+    player.faction_standing["merchants"] = "friendly"
+    player.faction_standing["raiders"] = "hostile"
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.faction_standing == {"merchants": "friendly", "raiders": "hostile"}
+
+    conn.close()
+
+
+def test_player_faction_standing_defaults_to_empty_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.faction_standing == {}
 
     conn.close()
 

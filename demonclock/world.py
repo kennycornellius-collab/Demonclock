@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from .events import ScheduledEvent
 from .history import LogEntry
-from .models import OPPOSITE_DIRECTION, NPC, Link, Node
+from .models import OPPOSITE_DIRECTION, Faction, NPC, Link, Node
 from .pool import GeneratedItem
 
 
@@ -63,6 +63,12 @@ class World:
         # once a quest signals needs_new_npc. Never a fight target: no
         # HP/combat fields on models.NPC, unlike enemies.py's foes.
         self.npcs: dict[str, NPC] = {}
+        # Factions (SPEC.md §8, Step 10 Stage 4) -- fixed world content; a
+        # player's relationship to one lives on Player.faction_standing, not
+        # here. No live trigger assigns NPC.faction_id or moves standing yet
+        # this stage -- data model + canon.RequirementKind.
+        # FACTION_STANDING_AT_LEAST only.
+        self.factions: dict[str, Faction] = {}
 
     # -- construction --------------------------------------------------
 
@@ -73,6 +79,10 @@ class World:
     def add_npc(self, npc: NPC) -> NPC:
         self.npcs[npc.id] = npc
         return npc
+
+    def add_faction(self, faction: Faction) -> Faction:
+        self.factions[faction.id] = faction
+        return faction
 
     def add_link(
         self,

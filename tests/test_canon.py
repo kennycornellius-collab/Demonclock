@@ -150,6 +150,28 @@ def test_player_not_captured_fails_while_captured():
     assert not check(state, Requirement(RequirementKind.PLAYER_NOT_CAPTURED, {}))
 
 
+# -- FACTION_STANDING_AT_LEAST (Step 10 Stage 4) -----------------------------
+
+def test_faction_standing_at_least_passes_at_the_default_neutral_tier():
+    state = make_state()
+    req = Requirement(RequirementKind.FACTION_STANDING_AT_LEAST, {"faction_id": "merchants", "tier": "neutral"})
+    assert check(state, req)
+
+
+def test_faction_standing_at_least_passes_when_recorded_standing_is_higher():
+    state = make_state()
+    state.player.faction_standing["merchants"] = "allied"
+    req = Requirement(RequirementKind.FACTION_STANDING_AT_LEAST, {"faction_id": "merchants", "tier": "friendly"})
+    assert check(state, req)
+
+
+def test_faction_standing_at_least_fails_when_recorded_standing_is_lower():
+    state = make_state()
+    state.player.faction_standing["merchants"] = "unfriendly"
+    req = Requirement(RequirementKind.FACTION_STANDING_AT_LEAST, {"faction_id": "merchants", "tier": "neutral"})
+    assert not check(state, req)
+
+
 # -- CheckResult / check_manifest ------------------------------------------
 
 def test_check_manifest_passes_only_when_every_requirement_passes():

@@ -64,6 +64,21 @@ class NPC:
     location_id: str
     description: str = ""
     tags: list[str] = field(default_factory=list)
+    # Step 10 Stage 4: which Faction (if any) this NPC belongs to. None is a
+    # perfectly ordinary, unaffiliated NPC — most of them, until Stage 4's
+    # data model has a real trigger to actually assign one.
+    faction_id: str | None = None
+
+
+@dataclass
+class Faction:
+    """Step 10 Stage 4 (SPEC §8): id/name/description only — standing
+    itself lives on Player.faction_standing, not here (a faction is a fixed
+    piece of world content; a player's relationship to it is per-player
+    state)."""
+    id: str
+    name: str
+    description: str = ""
 
 
 @dataclass
@@ -111,3 +126,8 @@ class Player:
     # boss.run_encounter resolves the demon-king fight (game.py owns the
     # actual ending flow).
     game_over: str | None = None
+    # Step 10 Stage 4 (SPEC §8): faction_id -> one of factions.STANDING_TIERS.
+    # An absent entry means "neutral" (factions.standing_of's default) --
+    # this dict only ever holds a faction once something has actually moved
+    # standing off that default (no live trigger exists yet this stage).
+    faction_standing: dict[str, str] = field(default_factory=dict)

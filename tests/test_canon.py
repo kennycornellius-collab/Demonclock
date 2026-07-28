@@ -172,6 +172,74 @@ def test_faction_standing_at_least_fails_when_recorded_standing_is_lower():
     assert not check(state, req)
 
 
+def test_faction_standing_at_least_fails_gracefully_for_a_hallucinated_tier():
+    # target's JSON schema has no enum to rule this out ahead of time --
+    # STANDING_TIERS.index(tier) would raise ValueError uncaught otherwise.
+    state = make_state()
+    req = Requirement(RequirementKind.FACTION_STANDING_AT_LEAST, {"faction_id": "merchants", "tier": "beloved"})
+    assert not check(state, req)
+
+
+# -- Malformed target dicts (a real live bug: an LLM-authored requirement --
+# unlike a hand-built one in every test above -- can omit a key the schema
+# has no way to require, since `target`'s own schema is just {"type":
+# "object"}). Every kind must fail gracefully, never raise. -----------------
+
+def test_node_state_fails_gracefully_when_node_id_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.NODE_STATE, {"state": "peaceful"}))
+
+
+def test_node_state_fails_gracefully_when_state_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.NODE_STATE, {"node_id": "a"}))
+
+
+def test_link_status_fails_gracefully_when_a_key_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.LINK_STATUS, {"from_id": "a", "status": "open"}))
+
+
+def test_player_has_item_fails_gracefully_when_a_key_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.PLAYER_HAS_ITEM, {"item_id": "amulet"}))
+
+
+def test_player_has_skill_fails_gracefully_when_a_key_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.PLAYER_HAS_SKILL, {"skill_id": "firebolt"}))
+
+
+def test_player_gold_at_least_fails_gracefully_when_amount_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.PLAYER_GOLD_AT_LEAST, {}))
+
+
+def test_player_has_item_quantity_at_least_fails_gracefully_when_a_key_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain"}))
+
+
+def test_faction_standing_at_least_fails_gracefully_when_faction_id_is_missing():
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.FACTION_STANDING_AT_LEAST, {"tier": "neutral"}))
+
+
+def test_malformed_requirement_does_not_take_down_the_rest_of_the_manifest():
+    # The exact real-world shape of the reported crash: one bad requirement
+    # (missing node_id) alongside an otherwise-fine one, inside one
+    # check_manifest call reached via a real generated quest's manifest.
+    state = make_state()
+    manifest = PreconditionManifest([
+        Requirement(RequirementKind.NODE_STATE, {"state": "occupied"}),  # malformed -- no node_id
+        Requirement(RequirementKind.PLAYER_NOT_CAPTURED, {}),  # fine, passes
+    ])
+    result = check_manifest(state, manifest)
+    assert not result.passed
+    assert len(result.failures) == 1
+    assert "malformed" in result.failures[0].reason
+
+
 # -- CheckResult / check_manifest ------------------------------------------
 
 def test_check_manifest_passes_only_when_every_requirement_passes():

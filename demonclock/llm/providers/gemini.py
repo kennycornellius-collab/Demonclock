@@ -24,11 +24,15 @@ from ..base import LLMClient
 from ..errors import LLMProviderError, MalformedGenerationError
 from ..schema import matches_schema
 
-# Placeholder default, same "start rough, calibrate by feel" status as every
-# other tuning constant in this codebase (combat.py's DOT_DURATION, skills.py's
-# fair-cost constants, ...) -- swap freely via GenerationConfig, no code change
-# needed.
-DEFAULT_MODEL = "gemini-2.5-flash-lite"
+# 2026-07-28: switched from the pinned "gemini-2.5-flash-lite" (and, before
+# that, "gemini-2.5-flash") after BOTH were confirmed live-404ing as retired
+# for new users ("This model ... is no longer available to new users") --
+# the second time a pinned dated model has gone stale out from under this
+# project. Deliberately pointed at Google's own rolling "-latest" alias
+# instead of another pinned version, precisely so this class of breakage
+# stops recurring -- Google manages the alias's lifecycle, we don't have to.
+# Still swappable freely via GenerationConfig with no code change needed.
+DEFAULT_MODEL = "gemini-flash-latest"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 REQUEST_TIMEOUT_SECONDS = 30
 

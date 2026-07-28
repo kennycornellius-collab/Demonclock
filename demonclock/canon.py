@@ -103,44 +103,66 @@ class CheckResult:
 
 def check_manifest(state: GameState, manifest: PreconditionManifest) -> CheckResult:
     """Validates every requirement's boolean against the live DB. Never
-    raises on a dangling reference (an unknown node/link/item id) — that's
-    just a failed requirement with an explanatory reason, the same as any
-    other mismatch, so a stale manifest degrades to "repair or reject"
-    rather than crashing the checker."""
+    raises on a dangling reference (an unknown node/link/item id) OR a
+    malformed one (a target dict missing the keys this kind needs) — both
+    are just a failed requirement with an explanatory reason, the same as
+    any other mismatch, so a stale OR malformed manifest degrades to
+    "repair or reject" rather than crashing the checker. The malformed case
+    matters specifically because `target`'s JSON schema is just `{"type":
+    "object"}` (the hand-rolled schema validator can't express "these keys
+    are required, conditional on `kind`"), so nothing structurally stops a
+    real LLM from emitting a `NODE_STATE` requirement with no `node_id` —
+    confirmed live, not hypothetical (a real batch crashed the whole game
+    via an uncaught `KeyError` here before this fix)."""
     return CheckResult([_check_one(state, req) for req in manifest.requirements])
+
+
+def _malformed(req: Requirement) -> RequirementResult:
+    return RequirementResult(req, False, f"malformed {req.kind.value} requirement target: {req.target!r}")
 
 
 def _check_one(state: GameState, req: Requirement) -> RequirementResult:
     if req.kind is RequirementKind.NODE_STATE:
-        node = state.world.nodes.get(req.target["node_id"])
+        node_id, expected = req.target.get("node_id"), req.target.get("state")
+        if node_id is None or expected is None:
+            return _malformed(req)
+        node = state.world.nodes.get(node_id)
         if node is None:
-            return RequirementResult(req, False, f"unknown node: {req.target['node_id']!r}")
-        expected = req.target["state"]
+            return RequirementResult(req, False, f"unknown node: {node_id!r}")
         passed = node.state == expected
         return RequirementResult(req, passed, f"node state is {node.state!r}, expected {expected!r}")
 
     if req.kind is RequirementKind.LINK_STATUS:
-        link = state.world.get_link(req.target["from_id"], req.target["to_id"])
+        from_id, to_id = req.target.get("from_id"), req.target.get("to_id")
+        expected = req.target.get("status")
+        if from_id is None or to_id is None or expected is None:
+            return _malformed(req)
+        link = state.world.get_link(from_id, to_id)
         if link is None:
-            return RequirementResult(req, False, f"unknown link: {req.target['from_id']!r} -> {req.target['to_id']!r}")
-        expected = req.target["status"]
+            return RequirementResult(req, False, f"unknown link: {from_id!r} -> {to_id!r}")
         passed = link.status == expected
         return RequirementResult(req, passed, f"link status is {link.status!r}, expected {expected!r}")
 
     if req.kind is RequirementKind.PLAYER_HAS_ITEM:
-        expected = req.target["expected"]
-        has_item = any(item.item_id == req.target["item_id"] for item in state.player.inventory)
+        item_id, expected = req.target.get("item_id"), req.target.get("expected")
+        if item_id is None or expected is None:
+            return _malformed(req)
+        has_item = any(item.item_id == item_id for item in state.player.inventory)
         passed = has_item == expected
         return RequirementResult(req, passed, f"player has_item={has_item}, expected {expected}")
 
     if req.kind is RequirementKind.PLAYER_HAS_SKILL:
-        expected = req.target["expected"]
-        has_skill = any(skill.id == req.target["skill_id"] for skill in state.player.skills)
+        skill_id, expected = req.target.get("skill_id"), req.target.get("expected")
+        if skill_id is None or expected is None:
+            return _malformed(req)
+        has_skill = any(skill.id == skill_id for skill in state.player.skills)
         passed = has_skill == expected
         return RequirementResult(req, passed, f"player has_skill={has_skill}, expected {expected}")
 
     if req.kind is RequirementKind.PLAYER_GOLD_AT_LEAST:
-        amount = req.target["amount"]
+        amount = req.target.get("amount")
+        if amount is None:
+            return _malformed(req)
         passed = state.player.gold >= amount
         return RequirementResult(req, passed, f"player has {state.player.gold} gold, needs >= {amount}")
 
@@ -149,8 +171,9 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
         return RequirementResult(req, passed, f"player captured={state.player.captured}")
 
     if req.kind is RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST:
-        item_id = req.target["item_id"]
-        amount = req.target["amount"]
+        item_id, amount = req.target.get("item_id"), req.target.get("amount")
+        if item_id is None or amount is None:
+            return _malformed(req)
         quantity = next(
             (item.quantity for item in state.player.inventory if item.item_id == item_id), 0
         )
@@ -158,8 +181,15 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
         return RequirementResult(req, passed, f"player has {quantity} of {item_id!r}, needs >= {amount}")
 
     if req.kind is RequirementKind.FACTION_STANDING_AT_LEAST:
-        faction_id = req.target["faction_id"]
-        tier = req.target["tier"]
+        faction_id, tier = req.target.get("faction_id"), req.target.get("tier")
+        # `tier` also needs its OWN validity check beyond "present" -- unlike
+        # every other kind above, a present-but-invalid value here doesn't
+        # just fail a comparison, it crashes `factions.meets_standing`
+        # (`STANDING_TIERS.index(tier)` raises `ValueError` for anything not
+        # one of the five real tiers) -- the schema has no `enum` on this
+        # freeform `target` object to rule that out ahead of time.
+        if faction_id is None or tier not in factions.STANDING_TIERS:
+            return _malformed(req)
         current = factions.standing_of(state.player, faction_id)
         passed = factions.meets_standing(state.player, faction_id, tier)
         return RequirementResult(req, passed, f"standing with {faction_id!r} is {current!r}, needs >= {tier!r}")

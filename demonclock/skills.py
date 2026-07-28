@@ -39,11 +39,17 @@ class EffectKind(str, Enum):
     TAUNT = "taunt"
 
 
-# Mechanically inert this build stage — AOE/KNOCKBACK/TAUNT need multi-enemy or
-# positional combat that doesn't exist yet. Legal to compose (never rejected);
-# they just log a flavor line instead of faking a mechanic (SPEC.md §12 build
-# progress / progress.md for this stage).
-INERT_EFFECTS = frozenset({EffectKind.AOE, EffectKind.KNOCKBACK, EffectKind.TAUNT})
+# AOE and KNOCKBACK got real implementations in Step 10 Stage 6 (SPEC.md §12
+# build progress) now that multi-enemy ordinary combat exists to give them a
+# target — see combat.apply_skill. TAUNT stays here, still legal to compose
+# (never rejected) but mechanically inert: this game has exactly one
+# player-side combatant, so there's no ally for an enemy's attack to be
+# redirected FROM — a real "force enemies to target the caster instead"
+# mechanic has nothing to redirect away from, since the player is already the
+# only thing any enemy can ever target. A genuine future extension (a party
+# system, or enemies that can target something other than the player) would
+# be what finally gives this one somewhere to go.
+INERT_EFFECTS = frozenset({EffectKind.TAUNT})
 
 
 class StatType(str, Enum):

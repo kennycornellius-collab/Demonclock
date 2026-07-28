@@ -10,11 +10,15 @@ from .world import World
 
 START_NODE_ID = "village"
 
-# Which recurring wild foe (see enemies.py) a "dangerous"-tagged node offers via
-# Interact -> Fight. A real encounter/spawn system is a later part (SPEC.md §12
-# steps 4-5); this is just enough to make combat playable now.
-WILD_ENEMY_BY_NODE: dict[str, str] = {
-    "wilds": "bramblewood_wolf",
+# Which recurring wild foe(s) (see enemies.py) a "dangerous"-tagged node
+# offers via Interact -> Fight. A real encounter/spawn system is a later
+# part (SPEC.md §12 steps 4-5); this is just enough to make combat playable
+# now. node_id -> list[enemy_id] (Step 10 Stage 6 — a single-enemy node is
+# just a one-item list; "wilds" seeds a real pack of two wolves so ordinary
+# multi-enemy combat (combat.run_group_combat) has real seeded content to
+# exercise, not just tests).
+WILD_ENEMY_BY_NODE: dict[str, list[str]] = {
+    "wilds": ["bramblewood_wolf", "bramblewood_wolf"],
 }
 
 

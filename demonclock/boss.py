@@ -18,12 +18,12 @@ exercised against hand-built test Encounters. No wiring into the real game
 yet — the actual demon-king Encounter, the invasion-complete trigger, and
 game.py's Interact wiring are the next chunk.
 
-KNOWN SIMPLIFICATION (deliberate, this chunk, same status as combat.py's
-matching notes): enemy AI (boss + adds) always casts BASIC_ATTACK at the
-player — the same simplification enemies.py already has for ordinary combat
-("enemies don't cast learned skills yet"). Boss/add skill casting is a
-future refinement, not required to prove the phase/immunity/trigger
-mechanic.
+FIXED (Step 10 Stage 6, see combat.choose_enemy_skill): the boss/adds' own
+turns now pick uniformly among `usable_skills(actor)` instead of a
+hardcoded BASIC_ATTACK — no Encounter defines any boss/add skills yet, so
+`usable_skills` is still always `[BASIC_ATTACK]` and nothing about a fight
+against `DEMON_KING_ENCOUNTER` actually changes; the mechanism now exists
+for whenever a future Encounter gives the boss or an add real skills.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .combat import BASIC_ATTACK, Combatant, apply_skill, tick_upkeep, usable_skills
+from .combat import BASIC_ATTACK, Combatant, apply_skill, choose_enemy_skill, tick_upkeep, usable_skills
 from .models import Player
 from .skills import Effect, EffectKind, Skill, StatType
 
@@ -233,7 +233,11 @@ def run_encounter(
                     fighter.cooldowns[skill.id] = skill.cooldown
                 apply_skill(fighter, target, skill, log, rng)
             else:
-                apply_skill(actor, fighter, BASIC_ATTACK, log, rng)
+                skill = choose_enemy_skill(actor, rng)
+                actor.mana = max(0, actor.mana - skill.mana_cost)
+                if skill.cooldown > 0:
+                    actor.cooldowns[skill.id] = skill.cooldown
+                apply_skill(actor, fighter, skill, log, rng)
 
             if fighter.hp <= 0:
                 break

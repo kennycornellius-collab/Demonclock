@@ -16,11 +16,26 @@ dodge gates: a LUCK-based crit (`Combatant.luck`, new this chunk) multiplies
 effect ever rolls — DOT/HEAL/SHIELD/etc. stay exactly as deterministic as
 before.
 
-Effect targeting is a fixed default this stage (no ally/multi-enemy selection
-UI exists yet): harmful effects (damage/stun/dot/debuff) hit the opponent;
-beneficial effects (heal/lifesteal/shield/buff/cleanse) apply to the caster.
-AOE/KNOCKBACK/TAUNT are legal but mechanically inert (see skills.INERT_EFFECTS)
-until multi-enemy/positional combat exists.
+Effect targeting is a fixed default: harmful effects (damage/stun/dot/debuff)
+hit the opponent; beneficial effects (heal/lifesteal/shield/buff/cleanse)
+apply to the caster. Step 10 Stage 6 (SPEC.md §12 build progress) gave AOE and
+KNOCKBACK real implementations now that multi-enemy ordinary combat
+(`run_group_combat`) exists to give them a target/mechanic: AOE makes the
+skill's own damage instance also splash onto every OTHER live combatant on
+the opposing side (the optional `others` param below — empty/None in a 1v1
+fight, so AOE naturally has nothing extra to hit there, not a special case);
+KNOCKBACK staggers the target (adds to `stun_turns`, the same field STUN
+uses, just narrated differently — no separate "knockback" state needed).
+TAUNT stays inert (see skills.INERT_EFFECTS for why: this game has exactly
+one player-side combatant, so there's no ally for an enemy's attack to be
+redirected FROM).
+
+Step 10 Stage 6 also added `choose_enemy_skill`: enemy/boss/add turns now
+pick uniformly among `usable_skills(actor)` instead of a hardcoded
+`BASIC_ATTACK` — today every enemy's `.skills` list is still empty, so
+`usable_skills` is always `[BASIC_ATTACK]` and this resolves to the exact
+same thing every existing fight already did; the mechanism is there for
+whenever a future enemy/boss actually has learned skills.
 """
 from __future__ import annotations
 
@@ -49,6 +64,10 @@ DOT_DURATION = 3
 STUN_DURATION = 1
 BUFF_DEBUFF_DURATION = 3
 LIFESTEAL_FRACTION = 0.5
+# Step 10 Stage 6: KNOCKBACK staggers the target via the same stun_turns
+# field STUN uses — a separate constant (rather than reusing STUN_DURATION
+# directly) so the two can be tuned independently later.
+KNOCKBACK_STUN_TURNS = 1
 
 # Step 8 P4: the circuit breaker for a stalemate (e.g. a heal/shield-only
 # build outpacing a weak enemy's damage) — generous enough not to truncate
@@ -220,7 +239,7 @@ def _deal_damage(caster: Combatant, target: Combatant, magnitude: int, skill: Sk
 
 def apply_skill(
     caster: Combatant, opponent: Combatant, skill: Skill, log: list[str],
-    rng: random.Random | None = None,
+    rng: random.Random | None = None, others: list[Combatant] | None = None,
 ) -> None:
     """Resolves every effect on `skill` in a fixed canonical order (not
     authoring order) so cross-effect dependencies — e.g. LIFESTEAL needs
@@ -233,15 +252,25 @@ def apply_skill(
     behavior, which is what every direct `apply_skill(...)` call in the test
     suite still relies on. `run_combat`/`run_encounter` always pass a real
     `random.Random` instance.
+
+    `others` (Step 10 Stage 6) lists every OTHER live combatant on
+    `opponent`'s side, for AOE to also hit — `None`/empty (the default,
+    what every 1v1 call site including `boss.run_encounter` still passes)
+    means AOE naturally has nothing extra to splash onto, not a special
+    case. Only `run_group_combat`'s player-turn dispatch ever passes a
+    non-empty list.
     """
     magnitude = _magnitude(caster, skill)
     dealt = 0
+    has_damage = any(e.kind is EffectKind.DAMAGE for e in skill.effects)
+    has_aoe = any(e.kind is EffectKind.AOE for e in skill.effects)
 
     for effect in sorted(skill.effects, key=lambda e: _EFFECT_PRIORITY[e.kind]):
         if effect.kind is EffectKind.DAMAGE:
             if rng is not None and _roll_dodge(opponent, caster, rng):
                 log.append(f"{opponent.name} dodges {caster.name}'s {skill.name}!")
                 dealt = 0
+                hit_magnitude = magnitude  # no crit/variance rolled for a dodged hit
             else:
                 hit_magnitude = magnitude
                 if rng is not None:
@@ -250,6 +279,15 @@ def apply_skill(
                         log.append("Critical hit!")
                     hit_magnitude = _apply_variance(hit_magnitude, rng)
                 dealt = _deal_damage(caster, opponent, hit_magnitude, skill, log)
+
+            if has_aoe:
+                for other in others or []:
+                    if other.hp <= 0:
+                        continue
+                    if rng is not None and _roll_dodge(other, caster, rng):
+                        log.append(f"{other.name} dodges {caster.name}'s {skill.name}!")
+                        continue
+                    _deal_damage(caster, other, hit_magnitude, skill, log)
 
         elif effect.kind is EffectKind.HEAL:
             healed = min(magnitude, caster.hp_max - caster.hp)
@@ -292,6 +330,19 @@ def apply_skill(
             caster.modifiers = [m for m in caster.modifiers if m.amount > 0]
             if len(caster.modifiers) < before:
                 log.append(f"{caster.name} shakes off the negative effects.")
+
+        elif effect.kind is EffectKind.KNOCKBACK:
+            opponent.stun_turns += KNOCKBACK_STUN_TURNS
+            log.append(f"{opponent.name} is knocked back, staggering!")
+
+        elif effect.kind is EffectKind.AOE:
+            # The splash itself already happened above, folded into the
+            # DAMAGE branch (AOE modifies how DAMAGE resolves rather than
+            # being its own damage-dealing effect) -- this branch only
+            # covers the edge case of an AOE effect with no DAMAGE effect
+            # on the same skill, which has nothing to spread.
+            if not has_damage:
+                log.append(f"{skill.name}'s aoe has no damage to spread without a damage effect.")
 
         elif effect.kind in INERT_EFFECTS:
             log.append(f"{skill.name}'s {effect.kind.value} has no target here yet.")
@@ -341,6 +392,146 @@ def turn_order(player: Combatant, enemy: Combatant) -> list[str]:
     return ["enemy", "player"] if enemy.agility > player.agility else ["player", "enemy"]
 
 
+def choose_enemy_skill(actor: Combatant, rng: random.Random) -> Skill:
+    """Step 10 Stage 6: picks uniformly among `usable_skills(actor)` instead
+    of a hardcoded BASIC_ATTACK. Implemented via `rng.random()` rather than
+    `rng.choice()` deliberately: every rigged test-double `rng` in this
+    codebase implements only `.random()`/`.uniform()` (never `.choice()`),
+    and — more importantly — every enemy/boss/add's `.skills` list is still
+    empty today, so `usable_skills` is always the single-element
+    `[BASIC_ATTACK]`; this returns it directly WITHOUT consuming any `rng`
+    draw in that case, so the dodge/crit/variance roll sequence every
+    existing test relies on is completely undisturbed. Only once an
+    enemy/boss/add actually has learned skills does this ever roll."""
+    options = usable_skills(actor)
+    if len(options) == 1:
+        return options[0]
+    index = min(len(options) - 1, int(rng.random() * len(options)))
+    return options[index]
+
+
+def _enemies_desc(enemies: list[Combatant]) -> str:
+    """'the X' for one enemy (byte-identical to every message run_combat
+    printed before Step 10 Stage 6 generalized it), 'the X and the Y' / 'the
+    X, the Y, and the Z' for more — used to keep run_group_combat's
+    single-enemy narration textually identical to the old run_combat."""
+    named = [f"the {enemy.name}" for enemy in enemies]
+    if len(named) == 1:
+        return named[0]
+    if len(named) == 2:
+        return f"{named[0]} and {named[1]}"
+    return f"{', '.join(named[:-1])}, and {named[-1]}"
+
+
+GroupChooseAction = Callable[
+    [Combatant, list[Combatant], list[Skill]],
+    "tuple[Skill, Combatant] | None",
+]
+
+
+def run_group_combat(
+    player: Player,
+    enemies: list[Combatant],
+    choose_action: GroupChooseAction,
+    current_day: int = 0,
+    rng: random.Random | None = None,
+) -> tuple[CombatResult, list[str]]:
+    """The general engine (Step 10 Stage 6) both ordinary multi-enemy combat
+    and `run_combat`'s single-enemy shim rest on — same multi-combatant
+    turn-order/targeting shape `boss.run_encounter` already established
+    (sans phases/adds/immunity, which stay `boss.py`'s own scope, reserved
+    for designated bosses), rather than a second, unrelated implementation.
+
+    `choose_action(fighter, alive_enemies, usable_skills)` is called once
+    per player turn; `alive_enemies` only lists enemies still standing.
+    Returning None means flee; otherwise a `(skill, target)` pair, same
+    shape as `boss.ChooseAction` — the caller only needs to prompt for a
+    target when more than one enemy is alive, same precedent
+    `game._handle_demon_king` already set.
+
+    Enemies always target the player (no ally-targeting for foes this
+    stage) and pick their skill via `choose_enemy_skill`. Unlike
+    `boss.run_encounter`, a loss here routes through `setback.py` exactly
+    like the single-enemy `run_combat` always has — an ordinary fight, never
+    a game-over.
+
+    Turn order is fixed once at the start (agility descending, ties favor
+    the player — same convention `turn_order` uses for the 1-enemy case,
+    reproduced here via a stable sort with the fighter listed first).
+    Guaranteed to terminate (same `MAX_COMBAT_ROUNDS` circuit breaker
+    `run_combat` already had) with a stalemate FLED.
+    """
+    rng = rng if rng is not None else random.Random()
+    fighter = Combatant.from_player(player)
+    log: list[str] = []
+    order = sorted([fighter, *enemies], key=lambda c: -c.agility)
+    rounds = 0
+
+    while fighter.hp > 0 and any(enemy.hp > 0 for enemy in enemies):
+        if rounds >= MAX_COMBAT_ROUNDS:
+            player.hp = fighter.hp
+            player.mana = fighter.mana
+            log.append(f"The fight against {_enemies_desc(enemies)} drags on with no end in sight. You disengage.")
+            return CombatResult.FLED, log
+        rounds += 1
+
+        for actor in order:
+            if fighter.hp <= 0 or all(enemy.hp <= 0 for enemy in enemies):
+                break
+            if actor is not fighter and actor.hp <= 0:
+                continue
+
+            stunned = tick_upkeep(actor, log)
+            if fighter.hp <= 0:
+                break
+            if stunned:
+                continue
+
+            if actor is fighter:
+                alive = [enemy for enemy in enemies if enemy.hp > 0]
+                choice = choose_action(fighter, alive, usable_skills(fighter))
+                if choice is None:
+                    player.hp = fighter.hp
+                    player.mana = fighter.mana
+                    log.append(f"You flee from {_enemies_desc(enemies)}.")
+                    return CombatResult.FLED, log
+                skill, target = choice
+                behavior.record_combat_action(player.behavior)
+                if skill is not BASIC_ATTACK:
+                    fair = compute_fair_cost(skill.effects, _magnitude(fighter, skill))
+                    if is_underpriced(skill, fair):
+                        player.creative_mode_used = True
+                fighter.mana = max(0, fighter.mana - skill.mana_cost)
+                if skill.cooldown > 0:
+                    fighter.cooldowns[skill.id] = skill.cooldown
+                others = [enemy for enemy in alive if enemy is not target]
+                apply_skill(fighter, target, skill, log, rng, others=others)
+            else:
+                skill = choose_enemy_skill(actor, rng)
+                actor.mana = max(0, actor.mana - skill.mana_cost)
+                if skill.cooldown > 0:
+                    actor.cooldowns[skill.id] = skill.cooldown
+                apply_skill(actor, fighter, skill, log, rng)
+
+    player.hp = fighter.hp
+    player.mana = fighter.mana
+
+    if fighter.hp <= 0:
+        # SPEC.md §11.1: losing a fight is never game-over except vs. the
+        # demon king / designated bosses — an ordinary loss is a recoverable
+        # setback (setback.py), never a soft-lock.
+        player.hp = max(1, player.hp_max // 4)
+        log.append(
+            f"You are defeated by {_enemies_desc(enemies)}! You come to, battered but "
+            f"alive ({player.hp}/{player.hp_max} HP)."
+        )
+        log.extend(setback.capture_player(player, current_day))
+        return CombatResult.DEFEAT, log
+
+    log.append(f"You defeated {_enemies_desc(enemies)}!")
+    return CombatResult.VICTORY, log
+
+
 def run_combat(
     player: Player,
     enemy: Combatant,
@@ -348,14 +539,21 @@ def run_combat(
     current_day: int = 0,
     rng: random.Random | None = None,
 ) -> tuple[CombatResult, list[str]]:
-    """Resolves a fight to VICTORY/DEFEAT/FLED.
+    """Resolves a single-enemy fight to VICTORY/DEFEAT/FLED — a thin,
+    backward-compatible shim (Step 10 Stage 6) over `run_group_combat`,
+    the one real engine both this and ordinary multi-enemy combat now
+    share, rather than a second implementation. Its own external contract
+    (signature, docstring behavior, exact log wording) is unchanged from
+    before Stage 6 — see `_enemies_desc`, whose 1-enemy case is
+    byte-identical to what this function used to build inline.
 
     `choose_action(fighter, enemy, usable_skills)` is called once per player
-    turn; returning None means flee, otherwise the returned Skill is cast.
-    The engine itself does no input()/print() — tests script the callback,
-    the REPL wires it to real input. Player HP/MANA are written back onto
-    `player` before returning; `enemy` is mutated in place (a throwaway
-    per-encounter Combatant built by the caller).
+    turn; returning None means flee, otherwise the returned Skill is cast
+    (implicitly against the one enemy — no target selection needed with
+    only one). The engine itself does no input()/print() — tests script the
+    callback, the REPL wires it to real input. Player HP/MANA are written
+    back onto `player` before returning; `enemy` is mutated in place (a
+    throwaway per-encounter Combatant built by the caller).
 
     Combat does not advance the day clock — SPEC.md §4 reserves that for
     travel/rest, not intra-day actions. `current_day` is only needed to stamp
@@ -377,65 +575,11 @@ def run_combat(
     that matters the moment `choose_action` is ever driven by a script or a
     future automated/AI opponent.
     """
-    rng = rng if rng is not None else random.Random()
-    fighter = Combatant.from_player(player)
-    log: list[str] = []
-    order = turn_order(fighter, enemy)
-    rounds = 0
 
-    while fighter.hp > 0 and enemy.hp > 0:
-        if rounds >= MAX_COMBAT_ROUNDS:
-            player.hp = fighter.hp
-            player.mana = fighter.mana
-            log.append(f"The fight against the {enemy.name} drags on with no end in sight. You disengage.")
-            return CombatResult.FLED, log
-        rounds += 1
+    def adapted_choose_action(
+        fighter: Combatant, alive_enemies: list[Combatant], options: list[Skill]
+    ) -> "tuple[Skill, Combatant] | None":
+        skill = choose_action(fighter, alive_enemies[0], options)
+        return None if skill is None else (skill, alive_enemies[0])
 
-        for side in order:
-            if fighter.hp <= 0 or enemy.hp <= 0:
-                break
-
-            actor, opponent = (fighter, enemy) if side == "player" else (enemy, fighter)
-            stunned = tick_upkeep(actor, log)
-            if fighter.hp <= 0 or enemy.hp <= 0:
-                break
-            if stunned:
-                continue
-
-            if side == "player":
-                skill = choose_action(fighter, enemy, usable_skills(fighter))
-                if skill is None:
-                    player.hp = fighter.hp
-                    player.mana = fighter.mana
-                    log.append(f"You flee from the {enemy.name}.")
-                    return CombatResult.FLED, log
-                behavior.record_combat_action(player.behavior)
-                if skill is not BASIC_ATTACK:
-                    fair = compute_fair_cost(skill.effects, _magnitude(fighter, skill))
-                    if is_underpriced(skill, fair):
-                        player.creative_mode_used = True
-            else:
-                skill = BASIC_ATTACK
-
-            actor.mana = max(0, actor.mana - skill.mana_cost)
-            if skill.cooldown > 0:
-                actor.cooldowns[skill.id] = skill.cooldown
-            apply_skill(actor, opponent, skill, log, rng)
-
-    player.hp = fighter.hp
-    player.mana = fighter.mana
-
-    if fighter.hp <= 0:
-        # SPEC.md §11.1: losing a fight is never game-over except vs. the
-        # demon king / designated bosses — an ordinary loss is a recoverable
-        # setback (setback.py), never a soft-lock.
-        player.hp = max(1, player.hp_max // 4)
-        log.append(
-            f"You are defeated by the {enemy.name}! You come to, battered but "
-            f"alive ({player.hp}/{player.hp_max} HP)."
-        )
-        log.extend(setback.capture_player(player, current_day))
-        return CombatResult.DEFEAT, log
-
-    log.append(f"You defeated the {enemy.name}!")
-    return CombatResult.VICTORY, log
+    return run_group_combat(player, [enemy], adapted_choose_action, current_day, rng)

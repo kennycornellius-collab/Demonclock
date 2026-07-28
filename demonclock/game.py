@@ -108,9 +108,9 @@ def handle_interact(state: GameState) -> None:
     options: list[tuple[str, Callable[[], None]]] = []
     if node.prices:
         options.append(("Trade", lambda: _handle_trade(state, node)))
-    enemy_id = WILD_ENEMY_BY_NODE.get(state.player.location_id)
-    if enemy_id is not None:
-        options.append(("Fight", lambda: _handle_fight(state, enemy_id)))
+    enemy_ids = WILD_ENEMY_BY_NODE.get(state.player.location_id)
+    if enemy_ids:
+        options.append(("Fight", lambda: _handle_fight(state, enemy_ids)))
     for npc in state.world.npcs_at(node.id):
         options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
     if "workshop" in node.tags:
@@ -231,17 +231,26 @@ def _handle_craft(state: GameState, node) -> None:
         print(line)
 
 
-def _handle_fight(state: GameState, enemy_id: str) -> None:
-    enemy = make_enemy(enemy_id)
-    print(f"A {enemy.name} blocks your path! (HP {enemy.hp}/{enemy.hp_max})")
+def _handle_fight(state: GameState, enemy_ids: list[str]) -> None:
+    """Step 10 Stage 6: reuses combat.run_group_combat's multi-combatant
+    turn-order/targeting (the same shape boss.py's _handle_demon_king
+    already established) instead of a second implementation — target
+    selection only prompts when more than one enemy is still alive."""
+    enemies = [make_enemy(enemy_id) for enemy_id in enemy_ids]
+    if len(enemies) == 1:
+        print(f"A {enemies[0].name} blocks your path! (HP {enemies[0].hp}/{enemies[0].hp_max})")
+    else:
+        print(f"{', '.join(e.name for e in enemies)} block your path!")
     choice = input("1) Fight  2) Leave\n> ").strip()
     if choice != "1":
         return
 
     def choose_action(
-        fighter: combat.Combatant, foe: combat.Combatant, options: list
+        fighter: combat.Combatant, alive_enemies: list[combat.Combatant], options: list
     ):
-        print(f"Your HP: {fighter.hp}/{fighter.hp_max} MANA: {fighter.mana}/{fighter.mana_max}  |  {foe.name} HP: {foe.hp}/{foe.hp_max}")
+        print(f"Your HP: {fighter.hp}/{fighter.hp_max} MANA: {fighter.mana}/{fighter.mana_max}")
+        for foe in alive_enemies:
+            print(f"  {foe.name} HP: {foe.hp}/{foe.hp_max}")
         for i, skill in enumerate(options, start=1):
             print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
         print(f"  {len(options) + 1}) Flee")
@@ -249,15 +258,28 @@ def _handle_fight(state: GameState, enemy_id: str) -> None:
         if sub_choice == str(len(options) + 1):
             return None
         try:
-            return options[int(sub_choice) - 1]
+            skill = options[int(sub_choice) - 1]
         except (ValueError, IndexError):
-            return options[0]  # invalid input defaults to the first (Basic Attack)
+            skill = options[0]  # invalid input defaults to the first (Basic Attack)
 
-    result, log = combat.run_combat(state.player, enemy, choose_action, current_day=state.clock.current_day)
+        target = alive_enemies[0]
+        if len(alive_enemies) > 1:
+            print("Target:")
+            for i, candidate in enumerate(alive_enemies, start=1):
+                print(f"  {i}) {candidate.name}")
+            target_choice = input("> ").strip()
+            try:
+                target = alive_enemies[int(target_choice) - 1]
+            except (ValueError, IndexError):
+                pass  # invalid input defaults to the first alive enemy
+        return skill, target
+
+    result, log = combat.run_group_combat(state.player, enemies, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
     hint = behavior.derived_role_hint(state.player.behavior)
-    summary = narrate_combat_outcome(state.generation, enemy.name, result.value, log, hint)
+    opponent_desc = enemies[0].name if len(enemies) == 1 else ", ".join(e.name for e in enemies)
+    summary = narrate_combat_outcome(state.generation, opponent_desc, result.value, log, hint)
     if summary:
         print(summary)
 

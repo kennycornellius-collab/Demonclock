@@ -213,18 +213,94 @@ def test_cleanse_strips_dot_and_debuffs_but_keeps_buffs():
     assert caster.modifiers[0].amount > 0
 
 
-def test_inert_effects_are_declared_but_mechanically_do_nothing():
+def test_taunt_is_declared_but_mechanically_does_nothing():
+    # Step 10 Stage 6: AOE/KNOCKBACK got real implementations (see
+    # test_combat.py); TAUNT stays inert -- this game has exactly one
+    # player-side combatant, so there's no ally for an enemy's attack to be
+    # redirected FROM (see skills.INERT_EFFECTS's own comment).
     caster = make_combatant(hp=100)
     target = make_combatant(hp=100)
     log = []
 
-    for kind in (EffectKind.AOE, EffectKind.KNOCKBACK, EffectKind.TAUNT):
-        skill = make_skill(effects=[Effect(kind)])
-        apply_skill(caster, target, skill, log)
+    skill = make_skill(effects=[Effect(EffectKind.TAUNT)])
+    apply_skill(caster, target, skill, log)
 
     assert caster.hp == 100
     assert target.hp == 100
-    assert len(log) == 3
+    assert len(log) == 1
+
+
+def test_aoe_with_no_damage_effect_logs_a_flavor_line_and_does_nothing():
+    caster = make_combatant(hp=100)
+    target = make_combatant(hp=100)
+    log = []
+
+    skill = make_skill(effects=[Effect(EffectKind.AOE)])
+    apply_skill(caster, target, skill, log)
+
+    assert caster.hp == 100
+    assert target.hp == 100
+    assert len(log) == 1
+
+
+def test_knockback_staggers_the_target_via_stun_turns():
+    caster = make_combatant(hp=100)
+    target = make_combatant(hp=100)
+    log = []
+
+    skill = make_skill(effects=[Effect(EffectKind.KNOCKBACK)])
+    apply_skill(caster, target, skill, log)
+
+    assert target.stun_turns == 1
+    assert any("knocked back" in line.lower() for line in log)
+
+
+def test_aoe_damage_splashes_onto_other_live_targets():
+    caster = make_combatant(strength=10, defense=0)
+    primary = make_combatant(hp=100, hp_max=100, defense=0)
+    splash1 = make_combatant(hp=100, hp_max=100, defense=0)
+    splash2 = make_combatant(hp=100, hp_max=100, defense=0)
+    skill = make_skill(effects=[Effect(EffectKind.DAMAGE), Effect(EffectKind.AOE)])
+
+    apply_skill(caster, primary, skill, [], others=[splash1, splash2])
+
+    assert primary.hp < 100
+    assert splash1.hp < 100
+    assert splash2.hp < 100
+
+
+def test_aoe_does_not_splash_onto_an_already_dead_other():
+    caster = make_combatant(strength=10, defense=0)
+    primary = make_combatant(hp=100, hp_max=100, defense=0)
+    dead = make_combatant(hp=0, hp_max=100, defense=0)
+    skill = make_skill(effects=[Effect(EffectKind.DAMAGE), Effect(EffectKind.AOE)])
+
+    apply_skill(caster, primary, skill, [], others=[dead])
+
+    assert dead.hp == 0
+
+
+def test_damage_without_aoe_never_touches_others():
+    caster = make_combatant(strength=10, defense=0)
+    primary = make_combatant(hp=100, hp_max=100, defense=0)
+    bystander = make_combatant(hp=100, hp_max=100, defense=0)
+    skill = make_skill(effects=[Effect(EffectKind.DAMAGE)])  # no AOE
+
+    apply_skill(caster, primary, skill, [], others=[bystander])
+
+    assert primary.hp < 100
+    assert bystander.hp == 100
+
+
+def test_aoe_with_no_others_only_hits_the_primary_target():
+    # A 1v1 fight naturally has nothing to splash onto -- not a special case.
+    caster = make_combatant(strength=10, defense=0)
+    primary = make_combatant(hp=100, hp_max=100, defense=0)
+    skill = make_skill(effects=[Effect(EffectKind.DAMAGE), Effect(EffectKind.AOE)])
+
+    apply_skill(caster, primary, skill, [])
+
+    assert primary.hp < 100
 
 
 # -- usable_skills / cooldowns --------------------------------------------

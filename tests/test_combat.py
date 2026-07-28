@@ -1,6 +1,16 @@
 import random
 
-from demonclock.combat import CRIT_MULTIPLIER, VARIANCE, Combatant, CombatResult, apply_skill, run_combat, turn_order
+from demonclock.combat import (
+    CRIT_MULTIPLIER,
+    VARIANCE,
+    Combatant,
+    CombatResult,
+    apply_skill,
+    choose_enemy_skill,
+    run_combat,
+    run_group_combat,
+    turn_order,
+)
 from demonclock.enemies import make_enemy
 from demonclock.models import Player
 from demonclock.skills import BASIC_ATTACK, Effect, EffectKind, Skill, StatType
@@ -413,3 +423,161 @@ def test_run_combat_casts_a_learned_skill_and_deducts_mana():
 
     assert player.mana == 12  # 20 - 8
     assert enemy.hp == 0
+
+
+# --- Step 10 Stage 6: choose_enemy_skill -------------------------------------
+
+class _PoisonRNG:
+    """A random.Random stand-in whose .random() raises if ever called --
+    proves choose_enemy_skill takes the zero-roll fast path when there's
+    only one usable skill, rather than merely returning the same result."""
+
+    def random(self) -> float:
+        raise AssertionError(".random() should never be called with only one usable skill")
+
+    def uniform(self, a: float, b: float) -> float:
+        raise AssertionError("uniform() should never be called here")
+
+
+def test_choose_enemy_skill_returns_basic_attack_without_rolling_when_its_the_only_option():
+    actor = make_combatant()
+    assert choose_enemy_skill(actor, _PoisonRNG()) is BASIC_ATTACK
+
+
+def test_choose_enemy_skill_picks_the_first_option_on_a_low_roll():
+    learned = Skill(
+        id="claw", name="Claw", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=5, attribute_multiplier=1.0, mana_cost=0,
+    )
+    actor = make_combatant(mana=10, mana_max=10, skills=[learned])
+
+    assert choose_enemy_skill(actor, _RiggedRNG(0.0)) is BASIC_ATTACK  # index 0
+
+
+def test_choose_enemy_skill_picks_the_last_option_on_a_high_roll():
+    learned = Skill(
+        id="claw", name="Claw", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=5, attribute_multiplier=1.0, mana_cost=0,
+    )
+    actor = make_combatant(mana=10, mana_max=10, skills=[learned])
+
+    assert choose_enemy_skill(actor, _RiggedRNG(0.999)) is learned  # index 1
+
+
+# --- Step 10 Stage 6: run_group_combat ---------------------------------------
+
+def test_run_group_combat_player_defeats_multiple_weak_enemies():
+    player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
+    enemies = [
+        make_combatant(name="Weakling A", hp=5, hp_max=5, strength=1, agility=1, defense=0),
+        make_combatant(name="Weakling B", hp=5, hp_max=5, strength=1, agility=1, defense=0),
+    ]
+
+    def choose_action(fighter, alive_enemies, options):
+        return options[0], alive_enemies[0]
+
+    result, log = run_group_combat(player, enemies, choose_action)
+
+    assert result is CombatResult.VICTORY
+    assert all(enemy.hp == 0 for enemy in enemies)
+    assert player.hp > 0
+
+
+def test_run_group_combat_choose_action_only_sees_alive_enemies():
+    player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
+    enemies = [
+        make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0),
+        make_combatant(name="Sturdy", hp=9999, hp_max=9999, strength=1, agility=1, defense=0),
+    ]
+    seen_counts = []
+
+    def choose_action(fighter, alive_enemies, options):
+        seen_counts.append(len(alive_enemies))
+        target = next(e for e in alive_enemies if e.name == "Weakling") if any(
+            e.name == "Weakling" for e in alive_enemies
+        ) else alive_enemies[0]
+        return options[0], target
+
+    run_group_combat(player, enemies, choose_action)
+
+    assert seen_counts[0] == 2  # both alive at first
+    assert seen_counts[-1] == 1  # Weakling dies, only Sturdy remains visible
+
+
+def test_run_group_combat_flee_returns_immediately():
+    player = make_player(strength=1, defense=0, agility=100, hp=50, hp_max=50)
+    enemies = [make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=1, defense=0)]
+
+    def choose_action(fighter, alive_enemies, options):
+        return None
+
+    result, log = run_group_combat(player, enemies, choose_action)
+
+    assert result is CombatResult.FLED
+    assert player.hp == 50
+    assert enemies[0].hp == 100
+
+
+def test_run_group_combat_defeat_captures_the_player():
+    player = make_player(strength=1, defense=0, agility=1, hp=5, hp_max=20, gold=100)
+    enemies = [make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=20, defense=0)]
+
+    def choose_action(fighter, alive_enemies, options):
+        return options[0], alive_enemies[0]
+
+    result, log = run_group_combat(player, enemies, choose_action, current_day=7)
+
+    assert result is CombatResult.DEFEAT
+    assert player.captured is True
+    assert any("defeated" in line.lower() for line in log)
+
+
+def test_run_group_combat_aoe_skill_splashes_onto_the_other_enemy():
+    aoe_skill = Skill(
+        id="cleave", name="Cleave", effects=[Effect(EffectKind.DAMAGE), Effect(EffectKind.AOE)],
+        attribute_type=StatType.STRENGTH, base_damage=50, attribute_multiplier=1.0, mana_cost=0,
+    )
+    player = make_player(strength=1, defense=0, agility=100, hp=100, hp_max=100, mana=10, mana_max=10, skills=[aoe_skill])
+    enemies = [
+        make_combatant(name="A", hp=9999, hp_max=9999, strength=1, agility=1, defense=0),
+        make_combatant(name="B", hp=9999, hp_max=9999, strength=1, agility=1, defense=0),
+    ]
+
+    def choose_action(fighter, alive_enemies, options):
+        cleave = next(skill for skill in options if skill.id == "cleave")
+        return cleave, alive_enemies[0]
+
+    run_group_combat(player, enemies, choose_action)
+
+    assert enemies[0].hp < 9999  # the primary target
+    assert enemies[1].hp < 9999  # splashed via AOE, despite never being targeted directly
+
+
+def test_run_group_combat_forces_a_stalemate_flee_after_the_round_cap():
+    endless_heal = Skill(
+        id="endless_heal", name="Endless Heal", effects=[Effect(EffectKind.HEAL)],
+        attribute_type=StatType.MAGIC, base_damage=9999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    player = make_player(hp=100, hp_max=100, magic=1, agility=100, skills=[endless_heal])
+    enemies = [make_combatant(name="Immortal Foe", hp=9999, hp_max=9999, strength=5, defense=0, agility=1)]
+
+    def choose_action(fighter, alive_enemies, options):
+        return endless_heal, alive_enemies[0]
+
+    result, log = run_group_combat(player, enemies, choose_action)
+
+    assert result is CombatResult.FLED
+    assert "drags on" in log[-1]
+
+
+# --- Step 10 Stage 6: run_combat now shims run_group_combat ------------------
+
+def test_run_combat_wording_is_unchanged_by_the_run_group_combat_refactor():
+    player = make_player(strength=50, defense=20, agility=20, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    result, log = run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert result is CombatResult.VICTORY
+    assert log[-1] == "You defeated the Weakling!"

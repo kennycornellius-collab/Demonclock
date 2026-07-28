@@ -11,8 +11,15 @@ def test_verb_aliases_map_to_same_action():
     assert parse("walk east").type is ActionType.MOVE
     assert parse("travel south").type is ActionType.MOVE
     assert parse("inv").type is ActionType.INVENTORY
-    assert parse("i").type is ActionType.INVENTORY
     assert parse("sleep").type is ActionType.REST
+
+
+def test_bare_i_is_not_a_shorthand_for_inventory():
+    # "i" collides with the pronoun "I" -- the overwhelmingly common opening
+    # word of a first-person free-text sentence ("I attack the wolf"), which
+    # this shorthand used to silently swallow as an inventory check.
+    action = parse("i decided to shovel the snow")
+    assert action.type is ActionType.UNRECOGNIZED
 
 
 def test_look_with_no_target():

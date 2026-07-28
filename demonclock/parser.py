@@ -38,7 +38,13 @@ VERB_TABLE: dict[str, ActionType] = {
     "check": ActionType.LOOK,
     "inventory": ActionType.INVENTORY,
     "inv": ActionType.INVENTORY,
-    "i": ActionType.INVENTORY,
+    # Deliberately NOT "i" -- this parser only ever sees the free-text box
+    # (SPEC.md §6), where the single most common opening word of an
+    # ordinary first-person sentence ("I attack the wolf", "I open the
+    # door") is the pronoun "I". A bare single-letter shorthand for
+    # Inventory silently swallowed every such sentence as an inventory
+    # check, discarding the rest of the text -- confirmed via real play.
+    # "inv"/"inventory" stay as the deterministic aliases.
     "rest": ActionType.REST,
     "sleep": ActionType.REST,
     "help": ActionType.HELP,

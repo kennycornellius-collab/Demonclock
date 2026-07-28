@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import behavior, boss, combat, db, knowledge, pool, rumors, setback, skills
+from . import behavior, boss, combat, db, knowledge, pool, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -88,7 +88,7 @@ def handle_interact(state: GameState) -> None:
     # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
     # once sim._reveal_demon_king has tagged this node (the invasion has
     # fully conquered the graph), Interact here means the real fight, not
-    # the ordinary wild-foe check below.
+    # the ordinary wild-foe/trade checks below.
     node = state.world.nodes[state.player.location_id]
     if "demon_king" in node.tags:
         _handle_demon_king(state)
@@ -97,12 +97,64 @@ def handle_interact(state: GameState) -> None:
     # NPCs at a node would be listed here via a DB query, no AI (SPEC.md §6).
     # A recurring wild foe on "dangerous" nodes is wired in for this combat
     # stage (see seed.WILD_ENEMY_BY_NODE) — real NPCs/encounters are content
-    # generation, a later part.
+    # generation, a later part. Step 10 Stage 1: a node with tracked prices
+    # (Node.prices non-empty) offers Trade the same way — no seeded node has
+    # both today, but a menu shows if a future one ever does.
     enemy_id = WILD_ENEMY_BY_NODE.get(state.player.location_id)
-    if enemy_id is None:
+    can_trade = bool(node.prices)
+
+    if enemy_id is None and not can_trade:
         print("There is no one here to talk to yet.")
         return
 
+    if enemy_id is not None and can_trade:
+        choice = input("1) Trade  2) Fight  3) Leave\n> ").strip()
+        if choice == "1":
+            _handle_trade(state, node)
+        elif choice == "2":
+            _handle_fight(state, enemy_id)
+        return
+
+    if can_trade:
+        _handle_trade(state, node)
+        return
+
+    _handle_fight(state, enemy_id)
+
+
+def _handle_trade(state: GameState, node) -> None:
+    """Step 10 Stage 1 (SPEC.md §6/§12): buy/sell against `node.prices`.
+    Single price both directions -- see trade.py's own docstring for why
+    (profit is geographic, via economy.py's threat multiplier, not an
+    in-node spread)."""
+    print(f"--- Trading at {node.name} ---")
+    goods = list(node.prices.items())
+    for i, (good_id, price) in enumerate(goods, start=1):
+        owned = next(
+            (item.quantity for item in state.player.inventory if item.item_id == good_id), 0
+        )
+        print(f"  {i}) {good_id.title()} — {price} gold each (you have {owned})")
+
+    choice = input(f"Gold: {state.player.gold}\n1) Buy  2) Sell  3) Leave\n> ").strip()
+    if choice not in ("1", "2"):
+        return
+
+    good_choice = input("Which good? (number) ").strip()
+    try:
+        good_id = goods[int(good_choice) - 1][0]
+    except (ValueError, IndexError):
+        print("Not a valid choice.")
+        return
+
+    quantity = _prompt_int("Quantity: ", default=1)
+    log = trade.buy(state, node.id, good_id, quantity) if choice == "1" else trade.sell(
+        state, node.id, good_id, quantity
+    )
+    for line in log:
+        print(line)
+
+
+def _handle_fight(state: GameState, enemy_id: str) -> None:
     enemy = make_enemy(enemy_id)
     print(f"A {enemy.name} blocks your path! (HP {enemy.hp}/{enemy.hp_max})")
     choice = input("1) Fight  2) Leave\n> ").strip()

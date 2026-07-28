@@ -3,7 +3,7 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
-from . import behavior, boss, combat, db, knowledge, pool, rumors, setback, skills, trade
+from . import behavior, boss, combat, db, knowledge, pool, quests, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -327,14 +327,26 @@ def handle_quests(state: GameState) -> None:
     """Step 6 Chunk B: the first real player-facing surface for content
     generation's output (SPEC.md §7 — items are "written to a content pool
     the daytime loop pulls from," previously true only in the abstract).
-    Deliberately scoped to pull + display + accept ONLY — completion/
-    turn-in/reward-granting needs its own design (how does the engine know
-    an objective was met?) and is an explicit future step, not this one."""
+    Step 10 Stage 2 adds turn-in: check each accepted quest's own
+    `completion` manifest (quests.check_completion) against LIVE state and
+    let the player collect the reward once it holds — no physical-location
+    requirement, since no NPC exists yet to turn a quest in to."""
     accepted = state.player.accepted_quests
     if accepted:
         print("--- Accepted quests ---")
-        for quest in accepted:
-            print(f"  {quest.get('title', quest['id'])} — reward {quest.get('reward_gold', 0)} gold")
+        for i, quest in enumerate(accepted, start=1):
+            done = "done!" if quests.check_completion(state, quest).passed else "in progress"
+            print(f"  {i}) {quest.get('title', quest['id'])} — reward {quest.get('reward_gold', 0)} gold ({done})")
+
+        choice = input("Turn in which quest? (number, blank to skip) ").strip()
+        if choice:
+            try:
+                target = accepted[int(choice) - 1]
+            except (ValueError, IndexError):
+                print("Not a valid choice.")
+            else:
+                for line in quests.turn_in(state, target):
+                    print(line)
     else:
         print("You haven't accepted any quests yet.")
 

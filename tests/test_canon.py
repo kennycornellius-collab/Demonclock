@@ -88,6 +88,28 @@ def test_player_has_item_fails_when_expected_false_but_item_present():
     assert not check(state, Requirement(RequirementKind.PLAYER_HAS_ITEM, {"item_id": "amulet", "expected": False}))
 
 
+# -- PLAYER_HAS_ITEM_QUANTITY_AT_LEAST ---------------------------------------
+
+def test_player_has_item_quantity_at_least_passes_when_enough_on_hand():
+    state = make_state()
+    add_item(state.player, "grain", "Grain", 5)
+    req = Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain", "amount": 5})
+    assert check(state, req)
+
+
+def test_player_has_item_quantity_at_least_fails_when_short():
+    state = make_state()
+    add_item(state.player, "grain", "Grain", 2)
+    req = Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain", "amount": 5})
+    assert not check(state, req)
+
+
+def test_player_has_item_quantity_at_least_fails_gracefully_when_item_entirely_absent():
+    state = make_state()
+    req = Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain", "amount": 1})
+    assert not check(state, req)
+
+
 # -- PLAYER_HAS_SKILL -------------------------------------------------------
 
 def test_player_has_skill_passes_for_a_starter_skill():

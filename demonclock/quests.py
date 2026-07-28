@@ -1,0 +1,50 @@
+"""Quest completion / turn-in (SPEC.md §7/§8, Step 10 Stage 2). The existing
+`canon.RequirementKind` vocabulary + `check_manifest` checker were built
+(Step 4) purely as a pre-commit/pre-pull "still valid to OFFER" gate --
+nothing about the checker itself is offer-specific, so the same machinery
+doubles as a post-acceptance "objective actually met" check with zero
+changes beyond adding one new quantity-aware RequirementKind (canon.py).
+
+An accepted quest is a flattened `dict` on `Player.accepted_quests` (Step 6
+Chunk B), not a dataclass -- its own `manifest` (the precondition) is
+already dropped and never re-validated once accepted. A `completion` key,
+if present (generation/quest.py's QUEST_SCHEMA now always includes one; a
+hand-built quest in a test may omit it), holds a SECOND, separate
+precondition-manifest-shaped dict -- the actual objective, checked only
+here, never at accept time.
+"""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .canon import CheckResult, PreconditionManifest, check_manifest
+
+if TYPE_CHECKING:
+    from .state import GameState
+
+# A quest with no "completion" key (e.g. a hand-built quest from before this
+# stage) has no objective to check -- treated as trivially complete rather
+# than permanently unturnable-in.
+_EMPTY_MANIFEST: dict = {"requirements": []}
+
+
+def check_completion(state: GameState, quest: dict) -> CheckResult:
+    manifest = PreconditionManifest.from_dict(quest.get("completion", _EMPTY_MANIFEST))
+    return check_manifest(state, manifest)
+
+
+def turn_in(state: GameState, quest: dict) -> list[str]:
+    """Never mutates state on failure (completion requirements not yet met).
+    On success: grants reward_gold and removes the quest from
+    Player.accepted_quests -- no location requirement (no NPC to return to
+    exists yet)."""
+    result = check_completion(state, quest)
+    if not result.passed:
+        reasons = "; ".join(failure.reason for failure in result.failures)
+        return [f"Not finished yet: {reasons}."]
+
+    reward = quest.get("reward_gold", 0)
+    state.player.gold += reward
+    state.player.accepted_quests.remove(quest)
+    title = quest.get("title", quest.get("id", "quest"))
+    return [f"Quest complete: {title}! You receive {reward} gold."]

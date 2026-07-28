@@ -80,6 +80,15 @@ def quest_dict(quest_id: str = "quest1", node_id: str = "village", required_stat
                 {"kind": RequirementKind.NODE_STATE.value, "target": {"node_id": node_id, "state": required_state}},
             ],
         },
+        # Step 10 Stage 2: completion is a second, separately-checked
+        # manifest -- an arbitrary but schema-valid objective, distinct from
+        # the precondition above (never asserted on by these Step 5 tests,
+        # which only care about the precondition/pool-commit machinery).
+        "completion": {
+            "requirements": [
+                {"kind": RequirementKind.PLAYER_GOLD_AT_LEAST.value, "target": {"amount": 0}},
+            ],
+        },
     }
 
 
@@ -279,6 +288,11 @@ def test_run_quest_builds_a_generated_item_with_a_real_manifest():
     assert item.payload["title"] == "Set things right"
     assert item.manifest.requirements[0].kind is RequirementKind.NODE_STATE
     assert item.manifest.requirements[0].target == {"node_id": "village", "state": "peaceful"}
+    # Step 10 Stage 2: the completion manifest rides along in the payload as
+    # a raw dict (unlike `manifest`, it's never lifted into a
+    # PreconditionManifest object here -- quests.check_completion does that
+    # itself, only once the quest is accepted and later checked at turn-in).
+    assert item.payload["completion"]["requirements"][0]["kind"] == RequirementKind.PLAYER_GOLD_AT_LEAST.value
 
 
 def test_run_quest_repair_reprompts_with_the_failing_requirements():
@@ -300,6 +314,11 @@ def test_run_quest_repair_reprompts_with_the_failing_requirements():
 def test_quest_schema_requires_kind_to_be_a_real_requirement_kind():
     manifest_item_schema = QUEST_SCHEMA["properties"]["manifest"]["properties"]["requirements"]["items"]
     assert set(manifest_item_schema["properties"]["kind"]["enum"]) == {k.value for k in RequirementKind}
+
+
+def test_quest_schema_requires_both_manifest_and_completion():
+    assert "manifest" in QUEST_SCHEMA["required"]
+    assert "completion" in QUEST_SCHEMA["required"]
 
 
 # -- pipeline.run_batch: Story + Quest -> content pool (Chunk C) -----------

@@ -23,13 +23,22 @@ _REQUIREMENT_KINDS = ", ".join(kind.value for kind in RequirementKind)
 SYSTEM_PROMPT = (
     "You are the Quest agent for a text RPG's content-generation batch. "
     "Given a situation, turn it into ONE concrete quest: a title, a "
-    "description of the task, a gold reward, and a precondition manifest -- "
-    "a list of structured requirements (never prose) that must still hold "
-    f"for this quest to make sense whenever a player eventually draws it. "
+    "description of the task, a gold reward, a precondition manifest, and a "
+    "completion manifest. The precondition manifest is a list of structured "
+    "requirements (never prose) that must still hold for this quest to make "
+    f"sense whenever a player eventually draws it. "
     f"Every requirement's `kind` MUST be one of: {_REQUIREMENT_KINDS}. "
+    "The completion manifest is the same shape but describes the actual "
+    "objective the player must achieve to turn the quest in -- e.g. "
+    "PLAYER_HAS_ITEM_QUANTITY_AT_LEAST for 'bring me N of something', or "
+    "NODE_STATE for 'until this place is no longer occupied'. The two "
+    "manifests answer different questions at different times: precondition "
+    "gates whether this quest is still valid to OFFER, completion is "
+    "whether it's actually DONE -- do not confuse them (e.g. a gold-reward "
+    "quest's completion should never just restate its own precondition). "
     "Reference entities ONLY by id, never by name, and only ids that "
     "actually appear in the situation/context you were given -- never "
-    "invent a new entity in the manifest. If completing this quest would "
+    "invent a new entity in either manifest. If completing this quest would "
     "plausibly need a place that doesn't exist on the map yet (e.g. an "
     "abandoned mine, a smuggler's cove), set needs_new_place to true and "
     "place_hint to a short plain-language description of it -- do NOT "
@@ -39,9 +48,27 @@ SYSTEM_PROMPT = (
     "phrase describing who the player is becoming (e.g. 'trade-focused, "
     "combat-averse') -- let it color the title's and description's word "
     "choice/tone, never reward_gold, needs_new_place, or any requirement in "
-    "the manifest, all of which must stay strictly determined by the "
+    "either manifest, all of which must stay strictly determined by the "
     "situation and existing world truth."
 )
+
+_MANIFEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "requirements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": [kind.value for kind in RequirementKind]},
+                    "target": {"type": "object"},
+                },
+                "required": ["kind", "target"],
+            },
+        },
+    },
+    "required": ["requirements"],
+}
 
 QUEST_SCHEMA = {
     "type": "object",
@@ -52,25 +79,18 @@ QUEST_SCHEMA = {
         "reward_gold": {"type": "integer"},
         "needs_new_place": {"type": "boolean"},
         "place_hint": {"type": "string"},
-        "manifest": {
-            "type": "object",
-            "properties": {
-                "requirements": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "kind": {"type": "string", "enum": [kind.value for kind in RequirementKind]},
-                            "target": {"type": "object"},
-                        },
-                        "required": ["kind", "target"],
-                    },
-                },
-            },
-            "required": ["requirements"],
-        },
+        # The precondition manifest (SPEC.md §8): gates whether this quest is
+        # still valid to OFFER. pool.commit_or_repair/pool.pull are the only
+        # things that ever read this one.
+        "manifest": _MANIFEST_SCHEMA,
+        # Step 10 Stage 2: the completion manifest -- the actual objective,
+        # checked only at turn-in (quests.check_completion), never at
+        # commit/pull time. Same shape as `manifest` but a structurally
+        # separate field since the two answer different questions at
+        # different times (see SYSTEM_PROMPT above).
+        "completion": _MANIFEST_SCHEMA,
     },
-    "required": ["id", "title", "description", "reward_gold", "manifest"],
+    "required": ["id", "title", "description", "reward_gold", "manifest", "completion"],
 }
 
 

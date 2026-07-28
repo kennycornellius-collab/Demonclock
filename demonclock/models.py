@@ -87,9 +87,11 @@ class Player:
     beliefs: dict[str, NodeBelief] = field(default_factory=dict)
     # Step 6 Chunk B: quests the player accepted from the content pool
     # (SPEC §7/§8) via game.handle_quests. Each entry is a flattened
-    # {"id": ..., **payload} dict — the manifest is deliberately dropped,
-    # since an accepted quest is never re-validated here (completion/
-    # turn-in tracking is explicitly a future step, not this one).
+    # {"id": ..., **payload} dict — the precondition manifest is
+    # deliberately dropped, since an accepted quest's OFFER validity is
+    # never re-checked once accepted. A "completion" key (Step 10 Stage 2),
+    # if present, is a second, separate manifest-shaped dict checked only at
+    # turn-in — see quests.check_completion/quests.turn_in.
     accepted_quests: list[dict] = field(default_factory=list)
     # SPEC §11.1: true, PERMANENT game-over — reserved for the demon king /
     # designated bosses only (see boss.py), unlike `captured` above, which

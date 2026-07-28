@@ -37,6 +37,12 @@ class RequirementKind(str, Enum):
     PLAYER_HAS_SKILL = "player_has_skill"
     PLAYER_GOLD_AT_LEAST = "player_gold_at_least"
     PLAYER_NOT_CAPTURED = "player_not_captured"
+    # Step 10 Stage 2 (quest completion/turn-in): PLAYER_HAS_ITEM's own
+    # `expected: bool` semantics are deliberately untouched (a plain
+    # has-it-at-all check) — this is a separate, quantity-aware kind for a
+    # "bring me 5 grain" objective, mirroring PLAYER_GOLD_AT_LEAST's own
+    # `amount` key rather than overloading PLAYER_HAS_ITEM's target shape.
+    PLAYER_HAS_ITEM_QUANTITY_AT_LEAST = "player_has_item_quantity_at_least"
 
 
 @dataclass
@@ -132,5 +138,14 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
     if req.kind is RequirementKind.PLAYER_NOT_CAPTURED:
         passed = not state.player.captured
         return RequirementResult(req, passed, f"player captured={state.player.captured}")
+
+    if req.kind is RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST:
+        item_id = req.target["item_id"]
+        amount = req.target["amount"]
+        quantity = next(
+            (item.quantity for item in state.player.inventory if item.item_id == item_id), 0
+        )
+        passed = quantity >= amount
+        return RequirementResult(req, passed, f"player has {quantity} of {item_id!r}, needs >= {amount}")
 
     raise ValueError(f"unhandled requirement kind: {req.kind!r}")  # unreachable given RequirementKind's closed enum

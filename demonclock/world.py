@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from .events import ScheduledEvent
 from .history import LogEntry
-from .models import OPPOSITE_DIRECTION, Link, Node
+from .models import OPPOSITE_DIRECTION, NPC, Link, Node
 from .pool import GeneratedItem
 
 
@@ -58,12 +58,21 @@ class World:
         # for any given node is harmless -- the caller just shows nothing
         # extra, same as before this existed.
         self.node_flavor: dict[str, str] = {}
+        # Talkable, non-combat entities (SPEC.md §6/§7, Step 10 Stage 3) --
+        # hand-seeded (seed.py) or added by generation/npc.py's materialize
+        # once a quest signals needs_new_npc. Never a fight target: no
+        # HP/combat fields on models.NPC, unlike enemies.py's foes.
+        self.npcs: dict[str, NPC] = {}
 
     # -- construction --------------------------------------------------
 
     def add_node(self, node: Node) -> Node:
         self.nodes[node.id] = node
         return node
+
+    def add_npc(self, npc: NPC) -> NPC:
+        self.npcs[npc.id] = npc
+        return npc
 
     def add_link(
         self,
@@ -146,6 +155,9 @@ class World:
         direction is unavailable (blocked with a reason) instead of just
         saying it doesn't exist."""
         return list(self.links.get(node_id, []))
+
+    def npcs_at(self, node_id: str) -> list[NPC]:
+        return [npc for npc in self.npcs.values() if npc.location_id == node_id]
 
     # -- state flips -------------------------------------------------------
 

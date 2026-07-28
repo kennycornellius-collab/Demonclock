@@ -34,8 +34,14 @@ from dataclasses import dataclass, field
 # A/B) that touches presentation text rather than world content, plus
 # "flavor" (Step 7 Chunk C) -- a batch-time content-generation role like
 # director/story/quest/places, just for ambient per-node atmosphere rather
-# than manifest-carrying content.
-ROLES = ("director", "story", "quest", "places", "entity_resolution", "narrator", "flavor")
+# than manifest-carrying content. Step 10 Stage 3 added "npc" -- a
+# batch-time content-generation role like places, triggered by a quest's
+# needs_new_npc flag -- and "dialogue", a live (never batch/pooled)
+# per-conversation role, same non-batch precedent as "narrator".
+ROLES = (
+    "director", "story", "quest", "places", "entity_resolution", "narrator", "flavor",
+    "npc", "dialogue",
+)
 
 # Extend alongside registry.PROVIDER_CLASSES when a new provider ships.
 PROVIDER_API_KEY_ENV = {"gemini": "GEMINI_API_KEY"}

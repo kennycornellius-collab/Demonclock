@@ -55,6 +55,18 @@ class InventoryItem:
 
 
 @dataclass
+class NPC:
+    """Step 10 Stage 3 (SPEC §6/§7): a talkable, non-combat entity. No HP/
+    combat fields on purpose — an NPC is never a fight target, unlike
+    enemies.py's Combatant-backed foes."""
+    id: str
+    name: str
+    location_id: str
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Player:
     name: str
     location_id: str

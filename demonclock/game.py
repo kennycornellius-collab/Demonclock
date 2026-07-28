@@ -3,13 +3,17 @@ Something else... The free-text box is the only place the parser runs.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from . import behavior, boss, combat, db, knowledge, pool, quests, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
+from .generation.dialogue import run_dialogue_opening, run_dialogue_reply
 from .generation.narrator import narrate_combat_outcome, reword_rumor
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
+from .models import NPC
 from .parser import parse
 from .player import new_player
 from .seed import WILD_ENEMY_BY_NODE, new_default_world
@@ -88,38 +92,45 @@ def handle_interact(state: GameState) -> None:
     # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
     # once sim._reveal_demon_king has tagged this node (the invasion has
     # fully conquered the graph), Interact here means the real fight, not
-    # the ordinary wild-foe/trade checks below.
+    # any of the ordinary options below.
     node = state.world.nodes[state.player.location_id]
     if "demon_king" in node.tags:
         _handle_demon_king(state)
         return
 
-    # NPCs at a node would be listed here via a DB query, no AI (SPEC.md §6).
-    # A recurring wild foe on "dangerous" nodes is wired in for this combat
-    # stage (see seed.WILD_ENEMY_BY_NODE) — real NPCs/encounters are content
-    # generation, a later part. Step 10 Stage 1: a node with tracked prices
-    # (Node.prices non-empty) offers Trade the same way — no seeded node has
-    # both today, but a menu shows if a future one ever does.
+    # Builds whatever's actually available at this node -- Trade (Step 10
+    # Stage 1, any node with tracked Node.prices), Fight (a recurring wild
+    # foe, see seed.WILD_ENEMY_BY_NODE), Talk (Step 10 Stage 3, one entry
+    # per NPC standing here). A node offering exactly one thing runs it
+    # directly with no menu detour (same behavior every node had before
+    # Trade/Talk existed); a node offering more than one shows a picker.
+    options: list[tuple[str, Callable[[], None]]] = []
+    if node.prices:
+        options.append(("Trade", lambda: _handle_trade(state, node)))
     enemy_id = WILD_ENEMY_BY_NODE.get(state.player.location_id)
-    can_trade = bool(node.prices)
+    if enemy_id is not None:
+        options.append(("Fight", lambda: _handle_fight(state, enemy_id)))
+    for npc in state.world.npcs_at(node.id):
+        options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
 
-    if enemy_id is None and not can_trade:
+    if not options:
         print("There is no one here to talk to yet.")
         return
 
-    if enemy_id is not None and can_trade:
-        choice = input("1) Trade  2) Fight  3) Leave\n> ").strip()
-        if choice == "1":
-            _handle_trade(state, node)
-        elif choice == "2":
-            _handle_fight(state, enemy_id)
+    if len(options) == 1:
+        options[0][1]()
         return
 
-    if can_trade:
-        _handle_trade(state, node)
+    for i, (label, _) in enumerate(options, start=1):
+        print(f"  {i}) {label}")
+    print(f"  {len(options) + 1}) Leave")
+    choice = input("> ").strip()
+    try:
+        index = int(choice) - 1
+    except ValueError:
         return
-
-    _handle_fight(state, enemy_id)
+    if 0 <= index < len(options):
+        options[index][1]()
 
 
 def _handle_trade(state: GameState, node) -> None:
@@ -152,6 +163,48 @@ def _handle_trade(state: GameState, node) -> None:
     )
     for line in log:
         print(line)
+
+
+def _handle_talk(state: GameState, npc: NPC) -> None:
+    """Step 10 Stage 3 (SPEC.md §6/§7): a live, one-call-per-conversation
+    dialogue exchange — see generation/dialogue.py for why this is never
+    batch-generated/pooled like Story/Quest/Places/Flavor. Every path here
+    (a generated option or free text) is pure flavor, a deliberate v1 scope
+    call — nothing said here can grant a quest, change gold/items, or shift
+    standing."""
+    print(f"--- {npc.name} ---")
+    if npc.description:
+        print(npc.description)
+
+    hint = behavior.derived_role_hint(state.player.behavior)
+    opening = run_dialogue_opening(state.generation, npc, hint)
+    behavior.record_dialogue_action(state.player.behavior)
+
+    if opening is None:
+        print(f"{npc.name} nods at you but doesn't have much to say right now.")
+        return
+
+    print(opening.greeting)
+    for i, option in enumerate(opening.options, start=1):
+        print(f"  {i}) {option.label}")
+    something_else = len(opening.options) + 1
+    print(f"  {something_else}) Something else...")
+    print(f"  {something_else + 1}) Leave")
+    choice = input("> ").strip()
+    try:
+        index = int(choice) - 1
+    except ValueError:
+        return
+
+    if 0 <= index < len(opening.options):
+        print(opening.options[index].response)
+        return
+    if index == something_else - 1:
+        message = input("What do you say? ").strip()
+        if not message:
+            return
+        reply = run_dialogue_reply(state.generation, npc, message, hint)
+        print(reply if reply else f"{npc.name} just shrugs.")
 
 
 def _handle_fight(state: GameState, enemy_id: str) -> None:

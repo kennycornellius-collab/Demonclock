@@ -4,10 +4,12 @@ from demonclock.clock import Clock
 from demonclock.events import EventKind, ScheduledEvent
 from demonclock.history import LogEntry
 from demonclock.knowledge import NodeBelief
+from demonclock.models import NPC, Node
 from demonclock.player import add_item, new_player
 from demonclock.pool import GeneratedItem
 from demonclock.seed import new_default_world
 from demonclock.skills import Effect, EffectKind, Skill, StatType
+from demonclock.world import World
 
 
 def test_no_save_yet_returns_none(tmp_path):
@@ -477,6 +479,41 @@ def test_node_flavor_defaults_to_empty_for_a_fresh_world(tmp_path):
     loaded_world, _, _ = db.load_game(conn)
 
     assert loaded_world.node_flavor == {}
+
+    conn.close()
+
+
+def test_npcs_round_trip(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()  # seed.py hand-seeds a couple of starter NPCs
+    world.add_npc(NPC(
+        id="test_npc", name="Test NPC", location_id="market",
+        description="A completely ordinary test fixture.", tags=["fixture"],
+    ))
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.npcs == world.npcs
+
+    conn.close()
+
+
+def test_npcs_default_to_empty_for_a_fresh_world_with_none_seeded(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.npcs == {}
 
     conn.close()
 

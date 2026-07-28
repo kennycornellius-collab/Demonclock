@@ -5,7 +5,7 @@ just enough nodes to prove Move/Look/Rest and pathfinding work end to end.
 from __future__ import annotations
 
 from .events import EventKind, ScheduledEvent
-from .models import Node
+from .models import NPC, Node
 from .world import World
 
 START_NODE_ID = "village"
@@ -35,6 +35,21 @@ def new_default_world() -> World:
     world.add_link("village", "market", "east", travel_days=1)
     world.add_link("village", "road", "north", travel_days=1)
     world.add_link("road", "wilds", "north", travel_days=2)
+
+    # Step 10 Stage 3: a couple of hand-seeded starter NPCs (same
+    # "immediately playable, no generator required" role as
+    # WILD_ENEMY_BY_NODE above) alongside generation/npc.py's later,
+    # quest-triggered agent.
+    world.add_npc(NPC(
+        id="miller_hana", name="Hana the Miller", location_id="village",
+        description="Runs Millhaven's grain mill, flour dust in her hair.",
+        tags=["villager", "merchant"],
+    ))
+    world.add_npc(NPC(
+        id="market_warden_oskar", name="Warden Oskar", location_id="market",
+        description="Keeps the peace at Millhaven Market, eyes always on the road north.",
+        tags=["guard"],
+    ))
 
     # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
     # wilds is where the invasion originates (see the "occupied" comment

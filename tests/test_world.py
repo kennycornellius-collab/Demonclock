@@ -1,6 +1,6 @@
 import pytest
 
-from demonclock.models import Node
+from demonclock.models import NPC, Node
 from demonclock.world import World, WorldError
 
 
@@ -145,3 +145,25 @@ def test_shortest_path_same_node_is_free():
     assert route is not None
     assert route.total_days == 0
     assert route.links == []
+
+
+# -- NPCs (Step 10 Stage 3) --------------------------------------------------
+
+def test_add_npc_registers_it_by_id():
+    world = make_world("a")
+    npc = world.add_npc(NPC(id="hana", name="Hana", location_id="a"))
+    assert world.npcs["hana"] is npc
+
+
+def test_npcs_at_returns_only_npcs_at_that_node():
+    world = make_world("a", "b")
+    world.add_npc(NPC(id="hana", name="Hana", location_id="a"))
+    world.add_npc(NPC(id="oskar", name="Oskar", location_id="b"))
+
+    assert [npc.id for npc in world.npcs_at("a")] == ["hana"]
+    assert [npc.id for npc in world.npcs_at("b")] == ["oskar"]
+
+
+def test_npcs_at_returns_empty_list_for_a_node_with_no_npcs():
+    world = make_world("a")
+    assert world.npcs_at("a") == []

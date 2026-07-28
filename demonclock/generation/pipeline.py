@@ -42,7 +42,10 @@ from ..pool import commit_or_repair
 from .context import build_batch_context
 from .director import DirectorIntent, run_director
 from .flavor import run_flavor
-from .places import materialize, run_places
+from .npc import materialize as materialize_npc
+from .npc import run_npc
+from .places import materialize as materialize_place
+from .places import run_places
 from .quest import run_quest, run_quest_repair
 from .story import run_story
 
@@ -127,6 +130,7 @@ def _generate_and_commit(
         return
 
     _maybe_extend_world(state, registry, context, situation, item)
+    _maybe_add_npc(state, registry, context, situation, item)
 
     def repair_fn(failing_item: GeneratedItem, failures: list[RequirementResult]) -> GeneratedItem | None:
         try:
@@ -154,4 +158,23 @@ def _maybe_extend_world(
         new_place = run_places(registry, context, situation, place_hint)
     except _DEGRADE_ON:
         return
-    materialize(state, situation.node_id, new_place)
+    materialize_place(state, situation.node_id, new_place)
+
+
+def _maybe_add_npc(
+    state: GameState, registry: LLMRegistry, context: dict, situation: Situation, item: GeneratedItem,
+) -> None:
+    """Step 10 Stage 3: the same "only when the quest asks for it" shape
+    _maybe_extend_world already established for Places, applied to a new
+    NPC (`needs_new_npc`/`npc_hint`). A failure here (no "npc" role
+    configured, a bad LLM proposal, an id/node collision) is silently
+    absorbed -- the quest still commits without the new NPC."""
+    if not item.payload.get("needs_new_npc"):
+        return
+
+    npc_hint = item.payload.get("npc_hint", "")
+    try:
+        new_npc = run_npc(registry, context, situation, npc_hint)
+    except _DEGRADE_ON:
+        return
+    materialize_npc(state, situation.node_id, new_npc)

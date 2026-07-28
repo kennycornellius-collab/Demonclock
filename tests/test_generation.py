@@ -9,6 +9,7 @@ from demonclock.events import EventKind, ScheduledEvent
 from demonclock.generation.context import build_batch_context
 from demonclock.generation.director import INTENT_SCHEMA, DirectorIntent, run_director
 from demonclock.generation.flavor import FLAVOR_SCHEMA, SYSTEM_PROMPT as FLAVOR_SYSTEM_PROMPT, run_flavor
+from demonclock.generation.npc import NEW_NPC_SCHEMA, NewNPC, materialize as materialize_npc, run_npc
 from demonclock.generation.pipeline import STREAM_SKIP_THRESHOLD, _should_run_stream, run_batch
 from demonclock.generation.places import NEW_PLACE_SCHEMA, NewPlace, materialize, run_places
 from demonclock.generation.quest import QUEST_SCHEMA, SYSTEM_PROMPT as QUEST_SYSTEM_PROMPT, run_quest, run_quest_repair
@@ -16,7 +17,7 @@ from demonclock.generation.story import SITUATION_SCHEMA, SYSTEM_PROMPT as STORY
 from demonclock.llm.config import GenerationConfig, ProviderSpec
 from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
-from demonclock.models import Node
+from demonclock.models import NPC, Node
 from demonclock.pool import GeneratedItem
 from demonclock.player import new_player
 from demonclock.state import GameState
@@ -106,21 +107,37 @@ def new_place_dict(place_id: str = "abandoned_mine", direction: str = "east", tr
     }
 
 
+def quest_dict_needing_new_npc(quest_id: str = "quest1", npc_hint: str = "a retired guard captain") -> dict:
+    data = quest_dict(quest_id)
+    data["needs_new_npc"] = True
+    data["npc_hint"] = npc_hint
+    return data
+
+
+def new_npc_dict(npc_id: str = "old_miller") -> dict:
+    return {
+        "id": npc_id, "name": "Old Miller", "description": "A weathered veteran of the northern watch.",
+        "tags": ["retired", "guard"],
+    }
+
+
 def make_full_registry(
     director_responses: list[object],
     story_responses: list[object],
     quest_responses: list[object],
     places_responses: list[object] | None = None,
     flavor_responses: list[object] | None = None,
+    npc_responses: list[object] | None = None,
 ) -> LLMRegistry:
     """Director/Story/Quest/Places each get their OWN mock client (distinct
     provider names) so a test can queue exactly the sequence of responses
     each role's calls should consume, in call order. `places_responses`/
-    `flavor_responses` are only wired in (as a configured "places"/"flavor"
-    role) when given -- omitting either matches a registry with no provider
-    configured for it at all, which Chunk C's (Step 5) tests already rely on
-    to prove Chunk D was purely additive, and Step 7 Chunk C's tests reuse
-    the same pattern for "flavor"."""
+    `flavor_responses`/`npc_responses` are only wired in (as a configured
+    "places"/"flavor"/"npc" role) when given -- omitting any matches a
+    registry with no provider configured for it at all, which Chunk C's
+    (Step 5) tests already rely on to prove Chunk D was purely additive, and
+    Step 7 Chunk C's / Step 10 Stage 3's tests reuse the same pattern for
+    "flavor"/"npc"."""
     roles = {
         "director": [ProviderSpec(provider="director_mock")],
         "story": [ProviderSpec(provider="story_mock")],
@@ -137,6 +154,9 @@ def make_full_registry(
     if flavor_responses is not None:
         roles["flavor"] = [ProviderSpec(provider="flavor_mock")]
         extra_clients["flavor_mock"] = MockClient(responses=flavor_responses, name="flavor_mock")
+    if npc_responses is not None:
+        roles["npc"] = [ProviderSpec(provider="npc_mock")]
+        extra_clients["npc_mock"] = MockClient(responses=npc_responses, name="npc_mock")
     return LLMRegistry(GenerationConfig(roles=roles), extra_clients=extra_clients)
 
 
@@ -319,6 +339,14 @@ def test_quest_schema_requires_kind_to_be_a_real_requirement_kind():
 def test_quest_schema_requires_both_manifest_and_completion():
     assert "manifest" in QUEST_SCHEMA["required"]
     assert "completion" in QUEST_SCHEMA["required"]
+
+
+def test_quest_schema_declares_needs_new_npc_and_npc_hint_as_optional():
+    # Optional, same as needs_new_place/place_hint -- an ordinary quest
+    # omits both entirely, so they must NOT be in "required".
+    assert "needs_new_npc" in QUEST_SCHEMA["properties"]
+    assert "npc_hint" in QUEST_SCHEMA["properties"]
+    assert "needs_new_npc" not in QUEST_SCHEMA["required"]
 
 
 # -- pipeline.run_batch: Story + Quest -> content pool (Chunk C) -----------
@@ -513,6 +541,107 @@ def test_run_batch_commits_the_quest_even_when_places_generation_fails():
 
     assert "abandoned_mine" not in state.world.nodes  # not created
     # but the quest itself is not held hostage by the missing place
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+
+
+# -- NPC agent (Step 10 Stage 3) ---------------------------------------------
+
+def test_run_npc_parses_a_well_formed_new_npc():
+    registry = make_full_registry([], [], [], npc_responses=[new_npc_dict()])
+    state = make_state(registry)
+    situation = Situation(id="sit1", title="t", description="d", node_id="village", stream="responsive")
+
+    new_npc = run_npc(registry, build_batch_context(state), situation, "a retired guard captain")
+
+    assert new_npc == NewNPC(
+        id="old_miller", name="Old Miller",
+        description="A weathered veteran of the northern watch.", tags=["retired", "guard"],
+    )
+
+
+def test_new_npc_schema_requires_all_four_fields():
+    assert set(NEW_NPC_SCHEMA["required"]) == {"id", "name", "description", "tags"}
+
+
+def test_materialize_npc_adds_it_to_the_named_node():
+    state = make_state()
+    new_npc = NewNPC(id="old_miller", name="Old Miller", description="A veteran.", tags=["guard"])
+
+    ok = materialize_npc(state, "village", new_npc)
+
+    assert ok is True
+    assert state.world.npcs["old_miller"].location_id == "village"
+    assert state.world.npcs["old_miller"].name == "Old Miller"
+
+
+def test_materialize_npc_refuses_to_overwrite_an_existing_npc_id():
+    state = make_state()
+    state.world.add_npc(NPC(id="old_miller", name="Original", location_id="village"))
+    new_npc = NewNPC(id="old_miller", name="Impostor", description="", tags=[])
+
+    ok = materialize_npc(state, "village", new_npc)
+
+    assert ok is False
+    assert state.world.npcs["old_miller"].name == "Original"  # untouched
+
+
+def test_materialize_npc_refuses_an_unknown_anchor_node():
+    state = make_state()
+    new_npc = NewNPC(id="old_miller", name="Old Miller", description="", tags=[])
+
+    ok = materialize_npc(state, "nowhere", new_npc)
+
+    assert ok is False
+    assert "old_miller" not in state.world.npcs
+
+
+# -- pipeline.run_batch: NPC extends the world only when asked (Step 10 Stage 3)
+
+def test_run_batch_materializes_a_new_npc_when_a_quest_asks_for_one():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict_needing_new_npc("quest_responsive"), quest_dict("quest_world")],
+        npc_responses=[new_npc_dict()],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert "old_miller" in state.world.npcs
+    assert state.world.npcs["old_miller"].location_id == "village"
+    # the quest itself still commits regardless of the new NPC
+    assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
+
+
+def test_run_batch_never_calls_npc_for_an_ordinary_quest():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict("quest_responsive"), quest_dict("quest_world")],
+        npc_responses=[new_npc_dict()],
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    npc_client = registry._explicit_clients["npc_mock"]
+    assert npc_client.call_count == 0  # never asked -- neither quest needed a new NPC
+
+
+def test_run_batch_commits_the_quest_even_when_npc_generation_fails():
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive"), situation_dict("sit_world")],
+        [quest_dict_needing_new_npc("quest_responsive"), quest_dict("quest_world")],
+        npc_responses=[],  # empty queue -- the npc call fails
+    )
+    state = make_state(registry)
+
+    run_batch(state, registry)
+
+    assert "old_miller" not in state.world.npcs  # not created
+    # but the quest itself is not held hostage by the missing NPC
     assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
 
 

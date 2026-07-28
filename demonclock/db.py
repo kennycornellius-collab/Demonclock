@@ -103,6 +103,14 @@ CREATE TABLE IF NOT EXISTS node_flavor (
     text TEXT NOT NULL   -- AI-generated ambient line (Step 7 Chunk C), plain text not JSON
 );
 
+CREATE TABLE IF NOT EXISTS npcs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    location_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    tags TEXT NOT NULL   -- JSON list (Step 10 Stage 3)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -144,6 +152,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM content_pool")
     conn.execute("DELETE FROM accepted_quests")
     conn.execute("DELETE FROM node_flavor")
+    conn.execute("DELETE FROM npcs")
 
     for node in world.nodes.values():
         conn.execute(
@@ -244,6 +253,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO node_flavor (node_id, text) VALUES (?, ?)",
             (node_id, text),
         )
+    for npc in world.npcs.values():
+        conn.execute(
+            "INSERT INTO npcs (id, name, location_id, description, tags) VALUES (?, ?, ?, ?, ?)",
+            (npc.id, npc.name, npc.location_id, npc.description, json.dumps(npc.tags)),
+        )
 
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('current_day', ?) "
@@ -274,7 +288,7 @@ def load_game(conn: sqlite3.Connection):
     from .events import ScheduledEvent
     from .history import LogEntry
     from .knowledge import NodeBelief
-    from .models import InventoryItem, Link, Node, Player
+    from .models import NPC, InventoryItem, Link, Node, Player
     from .pool import GeneratedItem
     from .skills import Skill
     from .world import World
@@ -312,6 +326,10 @@ def load_game(conn: sqlite3.Connection):
     world.invasion_origin_id = json.loads(origin_row[0]) if origin_row else None
     world.node_flavor = {
         r[0]: r[1] for r in conn.execute("SELECT node_id, text FROM node_flavor")
+    }
+    world.npcs = {
+        r[0]: NPC(id=r[0], name=r[1], location_id=r[2], description=r[3], tags=json.loads(r[4]))
+        for r in conn.execute("SELECT id, name, location_id, description, tags FROM npcs")
     }
     accepted_quests = [
         json.loads(r[0])

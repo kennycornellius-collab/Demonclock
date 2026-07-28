@@ -44,12 +44,18 @@ SYSTEM_PROMPT = (
     "place_hint to a short plain-language description of it -- do NOT "
     "invent that place's id yourself; a separate agent will name and place "
     "it on the map. Leave needs_new_place false for an ordinary quest set at "
-    "an existing node. The context's player.derived_role_hint is a short "
+    "an existing node. Likewise, if completing this quest would plausibly "
+    "need an NPC who doesn't exist on the map yet (e.g. a specific merchant, "
+    "a named guard captain), set needs_new_npc to true and npc_hint to a "
+    "short plain-language description -- do NOT invent that NPC's id "
+    "yourself; a separate agent will name and place them. Leave "
+    "needs_new_npc false for an ordinary quest involving no new NPC. The "
+    "context's player.derived_role_hint is a short "
     "phrase describing who the player is becoming (e.g. 'trade-focused, "
     "combat-averse') -- let it color the title's and description's word "
-    "choice/tone, never reward_gold, needs_new_place, or any requirement in "
-    "either manifest, all of which must stay strictly determined by the "
-    "situation and existing world truth."
+    "choice/tone, never reward_gold, needs_new_place, needs_new_npc, or any "
+    "requirement in either manifest, all of which must stay strictly "
+    "determined by the situation and existing world truth."
 )
 
 _MANIFEST_SCHEMA = {
@@ -79,6 +85,10 @@ QUEST_SCHEMA = {
         "reward_gold": {"type": "integer"},
         "needs_new_place": {"type": "boolean"},
         "place_hint": {"type": "string"},
+        # Step 10 Stage 3: the same optional extension pattern as
+        # needs_new_place/place_hint, but for generation/npc.py.
+        "needs_new_npc": {"type": "boolean"},
+        "npc_hint": {"type": "string"},
         # The precondition manifest (SPEC.md §8): gates whether this quest is
         # still valid to OFFER. pool.commit_or_repair/pool.pull are the only
         # things that ever read this one.

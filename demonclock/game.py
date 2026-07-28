@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import behavior, boss, combat, db, knowledge, pool, quests, rumors, setback, skills, trade
+from . import behavior, boss, combat, crafting, db, knowledge, pool, quests, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -101,9 +101,10 @@ def handle_interact(state: GameState) -> None:
     # Builds whatever's actually available at this node -- Trade (Step 10
     # Stage 1, any node with tracked Node.prices), Fight (a recurring wild
     # foe, see seed.WILD_ENEMY_BY_NODE), Talk (Step 10 Stage 3, one entry
-    # per NPC standing here). A node offering exactly one thing runs it
-    # directly with no menu detour (same behavior every node had before
-    # Trade/Talk existed); a node offering more than one shows a picker.
+    # per NPC standing here), Craft (Step 10 Stage 5, any "workshop"-tagged
+    # node). A node offering exactly one thing runs it directly with no
+    # menu detour (same behavior every node had before Trade/Talk/Craft
+    # existed); a node offering more than one shows a picker.
     options: list[tuple[str, Callable[[], None]]] = []
     if node.prices:
         options.append(("Trade", lambda: _handle_trade(state, node)))
@@ -112,6 +113,8 @@ def handle_interact(state: GameState) -> None:
         options.append(("Fight", lambda: _handle_fight(state, enemy_id)))
     for npc in state.world.npcs_at(node.id):
         options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
+    if "workshop" in node.tags:
+        options.append(("Craft", lambda: _handle_craft(state, node)))
 
     if not options:
         print("There is no one here to talk to yet.")
@@ -205,6 +208,27 @@ def _handle_talk(state: GameState, npc: NPC) -> None:
             return
         reply = run_dialogue_reply(state.generation, npc, message, hint)
         print(reply if reply else f"{npc.name} just shrugs.")
+
+
+def _handle_craft(state: GameState, node) -> None:
+    """Step 10 Stage 5 (SPEC.md §6/§12): craft from crafting.RECIPES's fixed
+    hand-authored table at a "workshop"-tagged node."""
+    print(f"--- Crafting at {node.name} ---")
+    recipes = list(crafting.RECIPES.values())
+    for i, recipe in enumerate(recipes, start=1):
+        inputs_desc = ", ".join(
+            f"{amount} {item_id.title()}" for item_id, amount in recipe.inputs.items()
+        )
+        print(f"  {i}) {recipe.name} — needs {inputs_desc} -> {recipe.output_quantity} {recipe.output_name}")
+
+    choice = input(f"{len(recipes) + 1}) Leave\n> ").strip()
+    try:
+        recipe = recipes[int(choice) - 1]
+    except (ValueError, IndexError):
+        return
+
+    for line in crafting.craft(state, recipe.id):
+        print(line)
 
 
 def _handle_fight(state: GameState, enemy_id: str) -> None:

@@ -20,7 +20,10 @@ WILD_ENEMY_BY_NODE: dict[str, str] = {
 
 def new_default_world() -> World:
     world = World()
-    world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub"]))
+    # "workshop" (Step 10 Stage 5): gates Interact -> Craft the same way
+    # WILD_ENEMY_BY_NODE gates Fight — Hana the Miller's grain mill (see
+    # the NPC seeded below) makes village the natural home for Bake Bread.
+    world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub", "workshop"]))
     # Seeded with a tracked grain price (SPEC.md §12 step 2, Stage 3: price
     # shifts) — the only trade-hub node with tracked prices this stage,
     # keeping the demo to "one good at one node" (economy.BASE_PRICE).

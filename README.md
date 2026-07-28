@@ -65,8 +65,6 @@ simulation to run through — never the other way around.
   generated item is checked against live world state before it's ever shown to you,
   and again right before you pull it, since the world keeps moving in between.
 
-See `SPEC.md` for the full design document and `progress.md` for a detailed,
-append-only build log of how each piece landed.
 
 ## Playing it
 
@@ -121,12 +119,3 @@ python -m pytest                                # full suite
 python -m pytest tests/test_world.py            # one file
 python -m pytest tests/test_world.py::test_name  # one test
 ```
-
-## Project docs
-
-- **`SPEC.md`** — the source-of-truth design document: every mechanic, invariant, and
-  resolved/open design decision.
-- **`CLAUDE.md`** — build invariants and a module-by-module architecture map, written
-  for whoever (human or AI) is extending this codebase next.
-- **`progress.md`** — an append-only log of every build session: what was done, why,
-  how it was verified, and what was learned.

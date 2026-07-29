@@ -37,10 +37,14 @@ from dataclasses import dataclass, field
 # than manifest-carrying content. Step 10 Stage 3 added "npc" -- a
 # batch-time content-generation role like places, triggered by a quest's
 # needs_new_npc flag -- and "dialogue", a live (never batch/pooled)
-# per-conversation role, same non-batch precedent as "narrator".
+# per-conversation role, same non-batch precedent as "narrator". The
+# free-text parser fallback (generation/free_text.py) added "parser" --
+# another live, non-batch role, same family as "narrator"/"dialogue": only
+# ever called once parser.py's own deterministic VERB_TABLE has already
+# failed to match, an even rarer path within the already-rare free-text box.
 ROLES = (
     "director", "story", "quest", "places", "entity_resolution", "narrator", "flavor",
-    "npc", "dialogue",
+    "npc", "dialogue", "parser",
 )
 
 # Extend alongside registry.PROVIDER_CLASSES when a new provider ships.

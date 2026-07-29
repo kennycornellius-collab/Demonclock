@@ -213,6 +213,14 @@ def run_encounter(
         for actor in order:
             if fighter.hp <= 0 or actor.hp <= 0:
                 continue
+            # Checked at the top of every iteration (mirrors
+            # combat.run_group_combat's own early-break-on-victory pattern)
+            # so a boss kill lands as VICTORY immediately, before any later
+            # actor this same round -- an add, or the phase's own
+            # environment_skills below -- gets a chance to kill the fighter
+            # and flip the result to DEFEAT after the fight was already won.
+            if phase.trigger is None and boss.hp <= 0:
+                break
             stunned = tick_upkeep(actor, log)
             if fighter.hp <= 0:
                 break
@@ -241,10 +249,16 @@ def run_encounter(
 
             if fighter.hp <= 0:
                 break
+            if phase.trigger is None and boss.hp <= 0:
+                break
 
         player.hp, player.mana = fighter.hp, fighter.mana
         if fighter.hp <= 0:
             return EncounterResult.DEFEAT, log
+
+        if phase.trigger is None and boss.hp <= 0:
+            log.append(f"You have defeated {encounter.name}!")
+            return EncounterResult.VICTORY, log
 
         for env_skill in phase.environment_skills:
             apply_skill(environment_actor, fighter, env_skill, log, rng)
@@ -254,11 +268,7 @@ def run_encounter(
 
         rounds_this_phase += 1
 
-        if phase.trigger is None:
-            if boss.hp <= 0:
-                log.append(f"You have defeated {encounter.name}!")
-                return EncounterResult.VICTORY, log
-        elif _trigger_met(phase.trigger, boss, active_adds, rounds_this_phase):
+        if phase.trigger is not None and _trigger_met(phase.trigger, boss, active_adds, rounds_this_phase):
             phase_index += 1
             enter_phase(phase_index)
 

@@ -222,6 +222,31 @@ def test_victory_when_the_boss_dies_in_the_final_phase():
     assert any("defeated" in line.lower() for line in log)
 
 
+def test_boss_death_wins_even_when_environment_damage_would_otherwise_kill_the_player_the_same_round():
+    # Regression test: the boss-death VICTORY check used to run only at the
+    # very end of the round, AFTER environment_skills damage was applied --
+    # so killing the boss and then taking lethal environment damage in the
+    # same round used to return DEFEAT instead of VICTORY. It's now checked
+    # immediately after the actor loop, before environment damage ever runs.
+    lethal_scorch = Skill(
+        id="lethal_scorch", name="Scorching Ground",
+        effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.MAGIC, base_damage=999, attribute_multiplier=1.0, mana_cost=0,
+    )
+    boss = make_boss(hp=1, hp_max=1, defense=0, agility=1)
+    phase = Phase(
+        id="p1", name="Only Phase", trigger=None, boss_immune=False,
+        environment_skills=[lethal_scorch],
+    )
+    encounter = Encounter(id="e", name="Fragile Boss", boss=boss, phases=[phase])
+    player = make_player(hp=10, hp_max=10, defense=0, agility=100)
+
+    result, log = run_encounter(player, encounter, choose_action=attack_boss, rng=_NeverRollRNG())
+
+    assert result is EncounterResult.VICTORY
+    assert player.hp == 10  # environment damage never applied -- the fight already ended
+
+
 def test_defeat_when_the_player_dies_and_is_not_captured():
     phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
     boss = make_boss(hp=9999, hp_max=9999, strength=200, agility=200, defense=0)

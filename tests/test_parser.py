@@ -44,3 +44,37 @@ def test_empty_input_is_unrecognized():
     action = parse("   ")
     assert action.type is ActionType.UNRECOGNIZED
     assert action.message
+
+
+# -- Step 12 Chunk A: the 8 new deterministic verbs -------------------------
+
+def test_fight_verb_aliases_map_to_fight():
+    assert parse("fight").type is ActionType.FIGHT
+    assert parse("attack the wolf").type is ActionType.FIGHT
+
+
+def test_trade_verb_aliases_map_to_trade():
+    assert parse("trade").type is ActionType.TRADE
+    assert parse("buy grain").type is ActionType.TRADE
+    assert parse("sell pelt").type is ActionType.TRADE
+
+
+def test_talk_verb_aliases_map_to_talk_and_carries_the_target():
+    action = parse("talk to hana")
+    assert action.type is ActionType.TALK
+    assert action.target == "to hana"
+    assert parse("speak").type is ActionType.TALK
+
+
+def test_craft_verb_maps_to_craft():
+    assert parse("craft bread").type is ActionType.CRAFT
+
+
+def test_skills_atlas_quests_ask_around_verbs():
+    assert parse("skills").type is ActionType.SKILLS
+    assert parse("atlas").type is ActionType.ATLAS
+    assert parse("map").type is ActionType.ATLAS
+    assert parse("quests").type is ActionType.QUESTS
+    assert parse("quest").type is ActionType.QUESTS
+    assert parse("rumors").type is ActionType.ASK_AROUND
+    assert parse("gossip").type is ActionType.ASK_AROUND

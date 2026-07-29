@@ -33,9 +33,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .combat import BASIC_ATTACK, Combatant, apply_skill, choose_enemy_skill, tick_upkeep, usable_skills
+from .combat import BASIC_ATTACK, Combatant, apply_skill, choose_enemy_skill, effective_stat, tick_upkeep, usable_skills
 from .models import Player
-from .skills import Effect, EffectKind, Skill, StatType
+from .skills import (
+    Effect,
+    EffectKind,
+    Skill,
+    StatType,
+    compute_fair_cost,
+    compute_magnitude,
+    is_underpriced,
+)
 
 
 # Step 8 P4: same circuit-breaker role as combat.MAX_COMBAT_ROUNDS, sized
@@ -236,6 +244,13 @@ def run_encounter(
                     log.append(f"You flee from {encounter.name}.")
                     return EncounterResult.FLED, log
                 skill, target = choice
+                if skill is not BASIC_ATTACK:
+                    magnitude = compute_magnitude(
+                        skill.base_damage, skill.attribute_multiplier, effective_stat(fighter, skill.attribute_type)
+                    )
+                    fair = compute_fair_cost(skill.effects, magnitude)
+                    if is_underpriced(skill, fair):
+                        player.creative_mode_used = True
                 fighter.mana = max(0, fighter.mana - skill.mana_cost)
                 if skill.cooldown > 0:
                     fighter.cooldowns[skill.id] = skill.cooldown

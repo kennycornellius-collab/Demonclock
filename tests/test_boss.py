@@ -322,6 +322,46 @@ def test_choose_action_can_target_an_add_distinct_from_the_boss():
     assert seen_add_hp["before"] == 1  # confirms the callback really saw the add's own state
 
 
+# --- creative mode ------------------------------------------------------------
+
+def test_casting_an_underpriced_skill_in_a_boss_fight_sets_creative_mode_used():
+    # Regression test: run_encounter never checked is_underpriced at all, so
+    # beating a boss with a deliberately cost-zeroed skill silently never set
+    # the flag SPEC.md §6b requires for that opt-out act -- mirrors combat.py's
+    # own test_casting_an_underpriced_skill_sets_creative_mode_used.
+    godmode = Skill(
+        id="godmode", name="One-Shot Everything",
+        effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=99999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=10, hp_max=10, defense=0)
+    encounter = Encounter(id="e", name="Weakling", boss=boss, phases=[phase])
+    player = make_player(strength=1, skills=[godmode])
+
+    # `choose_action`'s own `boss` argument is the real, internally-tracked
+    # (deep-copied) combatant -- targeting the outer `boss` variable instead
+    # would silently hit an untracked decoy object and never actually damage
+    # the fight's real boss.
+    result, log = run_encounter(player, encounter, choose_action=lambda fighter, boss, active_adds, usable: (godmode, boss))
+
+    assert result is EncounterResult.VICTORY
+    assert player.creative_mode_used is True
+
+
+def test_basic_attack_never_sets_creative_mode_used_in_a_boss_fight():
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=5, hp_max=5, defense=0)
+    encounter = Encounter(id="e", name="Weakling", boss=boss, phases=[phase])
+    player = make_player()
+
+    result, log = run_encounter(player, encounter, choose_action=attack_boss)
+
+    assert result is EncounterResult.VICTORY
+    assert player.creative_mode_used is False
+
+
 # --- the real demon-king encounter (Chunk B) --------------------------------
 
 def test_demon_king_encounter_is_well_formed():

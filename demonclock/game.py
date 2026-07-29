@@ -1,5 +1,14 @@
 """Menu-driven REPL (SPEC.md §6): Move / Interact / Inventory / Rest /
 Something else... The free-text box is the only place the parser runs.
+
+Step 12 Chunk C: `handle_free_text` is now the real dispatcher the free-text
+box always promised -- deterministic parse first (parser.py, unchanged
+zero-AI behavior), and only on UNRECOGNIZED does it build "what's actually
+available right now" and try the AI fallback (generation/free_text.py) for
+one of the 13 ActionTypes, before routing to whichever existing handler
+(actions.resolve for the simple 5, or one of this module's own interactive
+functions for the rest) already implements it -- no new interactive logic,
+just a new entry point into what already exists.
 """
 from __future__ import annotations
 
@@ -10,14 +19,24 @@ from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
 from .generation.dialogue import run_dialogue_opening, run_dialogue_reply
+from .generation.free_text import run_free_text_fallback
 from .generation.narrator import narrate_combat_outcome, reword_rumor
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .models import NPC
-from .parser import parse
+from .parser import Action, ActionType, parse
 from .player import new_player
+from .resolve import resolve_entity
 from .seed import WILD_ENEMY_BY_NODE, new_default_world
 from .state import GameState
+
+# Always reachable via free text regardless of the player's current node --
+# the top-level menu items with no location gating. Fight/Trade/Talk/Craft
+# are node-gated (see _available_context_actions) and NOT included here.
+_ALWAYS_AVAILABLE_ACTIONS = frozenset({
+    ActionType.MOVE, ActionType.LOOK, ActionType.INVENTORY, ActionType.REST, ActionType.HELP,
+    ActionType.SKILLS, ActionType.ATLAS, ActionType.QUESTS, ActionType.ASK_AROUND,
+})
 
 MENU = """
 --- {node_name} (day {day}) ---
@@ -88,6 +107,27 @@ def handle_move(state: GameState) -> None:
     print(outcome.message)
 
 
+def _available_context_actions(state: GameState, node) -> set[ActionType]:
+    """The context-gated actions (Fight/Trade/Talk/Craft) actually usable at
+    `node` right now -- the single source of truth `handle_interact`'s own
+    option-building AND the free-text dispatcher's availability check
+    (Step 12 Chunk C) both read, so the two can never drift out of sync.
+    Mirrors `handle_interact`'s own "demon_king short-circuits everything
+    else" rule (SPEC.md §6b/§11.1)."""
+    if "demon_king" in node.tags:
+        return {ActionType.FIGHT}
+    available: set[ActionType] = set()
+    if node.prices:
+        available.add(ActionType.TRADE)
+    if WILD_ENEMY_BY_NODE.get(node.id):
+        available.add(ActionType.FIGHT)
+    if state.world.npcs_at(node.id):
+        available.add(ActionType.TALK)
+    if "workshop" in node.tags:
+        available.add(ActionType.CRAFT)
+    return available
+
+
 def handle_interact(state: GameState) -> None:
     # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
     # once sim._reveal_demon_king has tagged this node (the invasion has
@@ -105,15 +145,16 @@ def handle_interact(state: GameState) -> None:
     # node). A node offering exactly one thing runs it directly with no
     # menu detour (same behavior every node had before Trade/Talk/Craft
     # existed); a node offering more than one shows a picker.
+    available = _available_context_actions(state, node)
     options: list[tuple[str, Callable[[], None]]] = []
-    if node.prices:
+    if ActionType.TRADE in available:
         options.append(("Trade", lambda: _handle_trade(state, node)))
-    enemy_ids = WILD_ENEMY_BY_NODE.get(state.player.location_id)
-    if enemy_ids:
+    if ActionType.FIGHT in available:
+        enemy_ids = WILD_ENEMY_BY_NODE[state.player.location_id]
         options.append(("Fight", lambda: _handle_fight(state, enemy_ids)))
     for npc in state.world.npcs_at(node.id):
         options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
-    if "workshop" in node.tags:
+    if ActionType.CRAFT in available:
         options.append(("Craft", lambda: _handle_craft(state, node)))
 
     if not options:
@@ -629,7 +670,126 @@ def handle_free_text(state: GameState) -> None:
     text = input("What do you do? ").strip()
     if not text:
         return
-    print(resolve(parse(text), state).message)
+
+    action = parse(text)
+    if action.type is ActionType.UNRECOGNIZED:
+        fallback = _fallback_parse(state, text)
+        if fallback is not None:
+            action = fallback
+
+    _dispatch_action(state, action)
+
+
+def _fallback_parse(state: GameState, text: str) -> Action | None:
+    """Only reached once parser.py's own deterministic VERB_TABLE has
+    already failed to match `text`'s first word (parser.py itself stays
+    100% deterministic/AI-free). Builds "what's actually available right
+    now" -- the always-available top-level actions plus whatever Fight/
+    Trade/Talk/Craft this specific node currently offers -- and asks the
+    AI fallback (generation/free_text.py) which of those the sentence most
+    likely means. Returns None (never a placeholder) whenever unconfigured,
+    the call fails, or the model can't confidently place it -- the caller
+    then falls back to parser.py's own honest UNRECOGNIZED message, exactly
+    as if this fallback had never been attempted."""
+    node = state.world.nodes[state.player.location_id]
+    available = _ALWAYS_AVAILABLE_ACTIONS | _available_context_actions(state, node)
+    parsed = run_free_text_fallback(state.generation, text, list(available))
+    if parsed is None:
+        return None
+    return Action(parsed.action, target=parsed.target, raw_text=text)
+
+
+def _dispatch_action(state: GameState, action: Action) -> None:
+    """Routes a resolved Action (from either parser.parse or the AI
+    fallback) to whatever already implements it -- actions.resolve for the
+    original 5 (Move/Look/Inventory/Rest/Help), or one of this module's own
+    interactive handlers for the rest (Step 12 Chunk C: these previously
+    ONLY existed behind game.py's menus). No new interactive logic here --
+    free text is just a new entry point into what already exists."""
+    if action.type in (ActionType.MOVE, ActionType.LOOK, ActionType.INVENTORY, ActionType.REST, ActionType.HELP):
+        print(resolve(action, state).message)
+        return
+    if action.type is ActionType.SKILLS:
+        handle_skills(state)
+        return
+    if action.type is ActionType.ATLAS:
+        handle_atlas(state)
+        return
+    if action.type is ActionType.QUESTS:
+        handle_quests(state)
+        return
+    if action.type is ActionType.ASK_AROUND:
+        handle_ask_around(state)
+        return
+
+    node = state.world.nodes[state.player.location_id]
+
+    if action.type is ActionType.FIGHT:
+        if "demon_king" in node.tags:
+            _handle_demon_king(state)
+            return
+        enemy_ids = WILD_ENEMY_BY_NODE.get(state.player.location_id)
+        if not enemy_ids:
+            print("There's nothing to fight here.")
+            return
+        _handle_fight(state, enemy_ids)
+        return
+
+    if action.type is ActionType.TRADE:
+        if not node.prices:
+            print("There's no trading to be done here.")
+            return
+        _handle_trade(state, node)
+        return
+
+    if action.type is ActionType.CRAFT:
+        if "workshop" not in node.tags:
+            print("There's nowhere to craft here.")
+            return
+        _handle_craft(state, node)
+        return
+
+    if action.type is ActionType.TALK:
+        npcs = state.world.npcs_at(node.id)
+        if not npcs:
+            print("There's no one here to talk to.")
+            return
+        npc = _resolve_talk_target(state, npcs, action.target)
+        if npc is not None:
+            _handle_talk(state, npc)
+        return
+
+    print(action.message or "I don't understand that.")
+
+
+def _resolve_talk_target(state: GameState, npcs: list[NPC], target: str | None) -> NPC | None:
+    """Resolves TALK's optional target phrase (e.g. "hana" from "talk to
+    hana") to a specific NPC among those actually present. A single NPC
+    present with no target given is talked to directly (matches
+    handle_interact's own "one option, no menu detour" behavior). A given
+    target is resolved via resolve.py's resolve_entity against the
+    present NPCs' own (id, name) pairs -- the same entity-resolution
+    machinery Step 4 Chunk D already built, not a second implementation.
+    Multiple NPCs present with no target given prompts for a pick."""
+    if len(npcs) == 1 and not target:
+        return npcs[0]
+
+    if target:
+        shortlist = [(npc.id, npc.name) for npc in npcs]
+        resolved_id = resolve_entity(target, shortlist, state.generation)
+        if resolved_id is not None:
+            return next(npc for npc in npcs if npc.id == resolved_id)
+        print(f"Not sure who {target!r} refers to here.")
+        return None
+
+    print("Talk to whom?")
+    for i, npc in enumerate(npcs, start=1):
+        print(f"  {i}) {npc.name}")
+    choice = input("> ").strip()
+    selected = _select(npcs, choice)
+    if selected is None:
+        print("Not a valid choice.")
+    return selected
 
 
 def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:

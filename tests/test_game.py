@@ -14,7 +14,13 @@ from demonclock import game
 from demonclock.clock import Clock
 from demonclock.combat import BASIC_ATTACK, Combatant, CombatResult
 from demonclock.boss import EncounterResult
-from demonclock.models import Player
+from demonclock.generation.free_text import ParsedAction
+from demonclock.llm.config import GenerationConfig, ProviderSpec
+from demonclock.llm.providers.mock import MockClient
+from demonclock.llm.registry import LLMRegistry
+from demonclock.models import NPC, Node, Player
+from demonclock.parser import ActionType
+from demonclock.seed import new_default_world
 from demonclock.skills import EffectKind, StatType
 from demonclock.state import GameState
 from demonclock.world import World
@@ -24,6 +30,16 @@ def make_state(**player_kwargs) -> GameState:
     defaults = dict(name="Hero", location_id="village")
     defaults.update(player_kwargs)
     return GameState(world=World(), player=Player(**defaults), clock=Clock())
+
+
+def make_default_state(location_id: str = "village", **player_kwargs) -> GameState:
+    """The real seeded world (village=workshop+Hana, market=trade+Oskar,
+    wilds=two wolves) -- lets the Chunk C dispatch-routing tests exercise
+    Fight/Trade/Talk/Craft availability against real content instead of a
+    hand-built fixture per test."""
+    defaults = dict(name="Hero", location_id=location_id)
+    defaults.update(player_kwargs)
+    return GameState(world=new_default_world(), player=Player(**defaults), clock=Clock())
 
 
 def feed_inputs(monkeypatch, values: list[str]):
@@ -155,3 +171,204 @@ def test_handle_demon_king_reprompts_on_an_invalid_target_choice_instead_of_defa
     skill, target = captured["result"]
     assert target is cultist
     assert target is not captured["boss"]
+
+
+# --- _available_context_actions -----------------------------------------
+
+def test_available_context_actions_at_each_seeded_node():
+    state = make_default_state()
+    village = state.world.nodes["village"]
+    market = state.world.nodes["market"]
+    wilds = state.world.nodes["wilds"]
+    road = state.world.nodes["road"]
+
+    assert game._available_context_actions(state, village) == {ActionType.TALK, ActionType.CRAFT}
+    assert game._available_context_actions(state, market) == {ActionType.TRADE, ActionType.TALK}
+    assert game._available_context_actions(state, wilds) == {ActionType.FIGHT}
+    assert game._available_context_actions(state, road) == set()
+
+
+def test_available_context_actions_short_circuits_to_fight_only_at_a_demon_king_node():
+    state = make_default_state()
+    node = state.world.nodes["market"]  # otherwise offers TRADE + TALK
+    node.tags.append("demon_king")
+
+    assert game._available_context_actions(state, node) == {ActionType.FIGHT}
+
+
+# --- Step 12 Chunk C: handle_free_text dispatch --------------------------
+
+def test_free_text_move_dispatches_through_actions_resolve(monkeypatch, capsys):
+    state = make_default_state()
+    feed_inputs(monkeypatch, ["go east"])
+
+    game.handle_free_text(state)
+
+    assert state.player.location_id == "market"
+
+
+def test_free_text_fight_dispatches_to_handle_fight_when_available(monkeypatch, capsys):
+    state = make_default_state(location_id="wilds")
+    feed_inputs(monkeypatch, ["fight", "2"])  # Fight, then Leave immediately
+
+    game.handle_free_text(state)
+
+    assert "block your path" in capsys.readouterr().out
+
+
+def test_free_text_fight_gives_an_honest_message_when_unavailable(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # no wild enemy here
+    feed_inputs(monkeypatch, ["fight"])
+
+    game.handle_free_text(state)
+
+    assert "nothing to fight here" in capsys.readouterr().out
+
+
+def test_free_text_trade_dispatches_to_handle_trade_when_available(monkeypatch, capsys):
+    state = make_default_state(location_id="market")
+    feed_inputs(monkeypatch, ["trade", "3"])  # Trade, then Leave
+
+    game.handle_free_text(state)
+
+    assert "Trading at Millhaven Market" in capsys.readouterr().out
+
+
+def test_free_text_trade_gives_an_honest_message_when_unavailable(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # no prices tracked here
+    feed_inputs(monkeypatch, ["trade"])
+
+    game.handle_free_text(state)
+
+    assert "no trading to be done here" in capsys.readouterr().out
+
+
+def test_free_text_craft_dispatches_to_handle_craft_when_available(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # tagged "workshop"
+    feed_inputs(monkeypatch, ["craft", "99"])  # Craft, then an invalid pick to bail out
+
+    game.handle_free_text(state)
+
+    assert "Crafting at Millhaven Village" in capsys.readouterr().out
+
+
+def test_free_text_craft_gives_an_honest_message_when_unavailable(monkeypatch, capsys):
+    state = make_default_state(location_id="market")  # not a workshop
+    feed_inputs(monkeypatch, ["craft"])
+
+    game.handle_free_text(state)
+
+    assert "nowhere to craft here" in capsys.readouterr().out
+
+
+def test_free_text_talk_with_a_single_npc_present_dispatches_directly(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # only Hana is here
+    feed_inputs(monkeypatch, ["talk"])
+
+    game.handle_free_text(state)
+
+    assert "--- Hana the Miller ---" in capsys.readouterr().out
+
+
+def test_free_text_talk_with_no_npcs_present_gives_an_honest_message(monkeypatch, capsys):
+    state = make_default_state(location_id="road")  # no NPCs here
+    feed_inputs(monkeypatch, ["talk"])
+
+    game.handle_free_text(state)
+
+    assert "no one here to talk to" in capsys.readouterr().out
+
+
+def _make_two_npc_state() -> GameState:
+    world = World()
+    world.add_node(Node(id="square", name="Town Square"))
+    world.add_npc(NPC(id="anna", name="Anna", location_id="square", description=""))
+    world.add_npc(NPC(id="bram", name="Bram", location_id="square", description=""))
+    return GameState(world=world, player=Player(name="Hero", location_id="square"), clock=Clock())
+
+
+def test_free_text_talk_with_a_target_resolves_the_right_npc_among_several(monkeypatch, capsys):
+    state = _make_two_npc_state()
+    feed_inputs(monkeypatch, ["talk to bram"])
+
+    game.handle_free_text(state)
+
+    out = capsys.readouterr().out
+    assert "--- Bram ---" in out
+    assert "--- Anna ---" not in out
+
+
+def test_free_text_talk_with_no_target_and_several_npcs_prompts_for_a_pick(monkeypatch, capsys):
+    state = _make_two_npc_state()
+    feed_inputs(monkeypatch, ["talk", "2"])  # Talk, then pick the 2nd listed NPC
+
+    game.handle_free_text(state)
+
+    out = capsys.readouterr().out
+    assert "Talk to whom?" in out
+
+
+def test_free_text_skills_atlas_quests_ask_around_dispatch_to_their_own_handlers(monkeypatch, capsys):
+    state = make_default_state()
+
+    feed_inputs(monkeypatch, ["skills", "2"])  # Skills menu, then Back
+    game.handle_free_text(state)
+    assert "Your skills:" in capsys.readouterr().out
+
+    feed_inputs(monkeypatch, ["atlas"])  # no beliefs yet -- returns immediately
+    game.handle_free_text(state)
+    assert "don't know of anywhere yet" in capsys.readouterr().out
+
+    feed_inputs(monkeypatch, ["quests"])  # nothing accepted, empty pool -- returns immediately
+    game.handle_free_text(state)
+    assert "haven't accepted any quests yet" in capsys.readouterr().out
+
+    feed_inputs(monkeypatch, ["rumors"])  # nothing in the event log -- returns immediately
+    game.handle_free_text(state)
+    assert "heard anything worth repeating" in capsys.readouterr().out
+
+
+def test_free_text_unrecognized_with_no_registry_prints_the_honest_parser_message(monkeypatch, capsys):
+    state = make_default_state()  # state.generation is None
+    feed_inputs(monkeypatch, ["shovel the snow"])
+
+    game.handle_free_text(state)
+
+    assert "I don't understand" in capsys.readouterr().out
+
+
+def test_free_text_ai_fallback_resolves_an_unrecognized_sentence_end_to_end(monkeypatch, capsys):
+    # A real (offline, MockClient-backed) registry, not a monkeypatched
+    # run_free_text_fallback -- exercises parser.py -> generation/
+    # free_text.py -> game._dispatch_action end to end.
+    config = GenerationConfig(roles={"parser": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={
+        "mock": MockClient(responses=[{"action": ActionType.FIGHT.value}]),
+    })
+    state = make_default_state(location_id="wilds")
+    state.generation = registry
+    feed_inputs(monkeypatch, ["I lunge at the wolves", "2"])  # novel phrasing, then Leave
+
+    game.handle_free_text(state)
+
+    assert "block your path" in capsys.readouterr().out
+
+
+def test_free_text_ai_fallback_result_is_still_gated_by_real_availability(monkeypatch, capsys):
+    # The AI fallback's own schema can't name an action outside what was
+    # available at call time (generation/free_text.py's own guarantee), but
+    # this confirms the dispatcher-side gate holds too: even if a stale/
+    # hypothetical response named FIGHT somewhere it isn't actually
+    # available, _dispatch_action's own availability check still catches it.
+    monkeypatch.setattr(
+        game, "run_free_text_fallback",
+        lambda registry, text, available: ParsedAction(action=ActionType.FIGHT, target=None),
+    )
+    config = GenerationConfig(roles={"parser": [ProviderSpec(provider="mock")]})
+    state = make_default_state(location_id="village")  # no wild enemy here
+    state.generation = LLMRegistry(config, extra_clients={"mock": MockClient(responses=[])})
+    feed_inputs(monkeypatch, ["I lunge at something"])
+
+    game.handle_free_text(state)
+
+    assert "nothing to fight here" in capsys.readouterr().out

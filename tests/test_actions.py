@@ -56,6 +56,23 @@ def test_move_unknown_direction():
     assert not outcome.ok
 
 
+def test_move_resolves_a_destination_name_to_the_matching_direction():
+    # "go to the market" doesn't literally match any link.direction ("east")
+    # -- resolved via resolve_entity's own deterministic token-subset pass
+    # against the destination names of the player's visible exits, no AI
+    # registry needed for this case.
+    state = make_state()
+    outcome = resolve(parse("go to the market"), state)
+    assert outcome.ok
+    assert state.player.location_id == "market"
+
+
+def test_move_still_fails_honestly_when_a_destination_name_cant_be_resolved():
+    outcome = resolve(parse("go to the moon"), make_state())
+    assert not outcome.ok
+    assert "the moon" in outcome.message
+
+
 def test_rest_advances_clock_and_heals():
     state = make_state()
     state.player.hp = 10

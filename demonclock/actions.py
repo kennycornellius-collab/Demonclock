@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from . import behavior, knowledge, newspaper, setback, sim
 from .parser import Action, ActionType
+from .resolve import resolve_entity
 from .state import GameState
 
 
@@ -48,10 +49,24 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
         return Outcome("Go where? Try 'go north'.", ok=False)
 
     direction = action.target
-    candidates = [
-        link for link in state.world.links_from(state.player.location_id)
-        if link.direction == direction
-    ]
+    links = state.world.links_from(state.player.location_id)
+    candidates = [link for link in links if link.direction == direction]
+    if not candidates and links:
+        # `direction` may name a DESTINATION rather than a literal compass
+        # direction (e.g. "go to the market") -- resolve it against the
+        # player's currently visible exits before giving up. Reuses
+        # resolve.py's resolve_entity, treating each link's own `direction`
+        # as the "id" half of the (id, name) shortlist, so no new
+        # resolution logic is needed. Only attempted once a literal
+        # direction match has already failed, so "go east" never pays this
+        # cost -- benefits both this free-text path and game.handle_move's
+        # own menu prompt, which also just forwards whatever the player typed.
+        shortlist = [(link.direction, state.world.nodes[link.to_id].name) for link in links]
+        resolved_direction = resolve_entity(direction, shortlist, state.generation)
+        if resolved_direction is not None:
+            direction = resolved_direction
+            candidates = [link for link in links if link.direction == direction]
+
     if not candidates:
         return Outcome(f"There's no path {direction} from here.", ok=False)
 

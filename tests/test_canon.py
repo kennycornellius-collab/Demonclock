@@ -5,7 +5,7 @@ from demonclock.canon import (
     check_manifest,
 )
 from demonclock.clock import Clock
-from demonclock.models import Node
+from demonclock.models import Faction, Node
 from demonclock.player import add_item, new_player
 from demonclock.skills import BASIC_ATTACK
 from demonclock.state import GameState
@@ -17,6 +17,12 @@ def make_state() -> GameState:
     world.add_node(Node(id="a", name="A", state="peaceful"))
     world.add_node(Node(id="b", name="B", state="occupied"))
     world.add_link("a", "b", "north", travel_days=1)
+    # Registered so FACTION_STANDING_AT_LEAST's own existence check
+    # (canon.py's dangling-reference guard) doesn't reject every test below
+    # that references it -- every one of those tests is about the standing
+    # COMPARISON, not about testing a hallucinated/unknown faction id (that
+    # has its own dedicated test further down).
+    world.add_faction(Faction(id="merchants", name="Merchants' Guild"))
     player = new_player(name="Hero", location_id="a")
     return GameState(world=world, player=player, clock=Clock())
 
@@ -180,6 +186,19 @@ def test_faction_standing_at_least_fails_gracefully_for_a_hallucinated_tier():
     assert not check(state, req)
 
 
+def test_faction_standing_at_least_fails_gracefully_for_a_hallucinated_faction_id():
+    # Regression test: an unrecognized faction_id used to silently PASS,
+    # since factions.standing_of defaults an absent Player.faction_standing
+    # entry to "neutral" regardless of whether the faction exists anywhere
+    # in world.factions -- a dangling reference must be rejected, same as
+    # an unknown node/link id already is.
+    state = make_state()
+    req = Requirement(
+        RequirementKind.FACTION_STANDING_AT_LEAST, {"faction_id": "smugglers_ring", "tier": "neutral"},
+    )
+    assert not check(state, req)
+
+
 # -- Malformed target dicts (a real live bug: an LLM-authored requirement --
 # unlike a hand-built one in every test above -- can omit a key the schema
 # has no way to require, since `target`'s own schema is just {"type":
@@ -218,6 +237,30 @@ def test_player_gold_at_least_fails_gracefully_when_amount_is_missing():
 def test_player_has_item_quantity_at_least_fails_gracefully_when_a_key_is_missing():
     state = make_state()
     assert not check(state, Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain"}))
+
+
+def test_player_gold_at_least_fails_gracefully_for_a_non_numeric_amount():
+    # Regression test: a present-but-non-numeric amount used to raise an
+    # uncaught TypeError from the bare `>=` comparison instead of degrading
+    # to a failed requirement, same as every other malformed-target case.
+    state = make_state()
+    assert not check(state, Requirement(RequirementKind.PLAYER_GOLD_AT_LEAST, {"amount": "a lot"}))
+
+
+def test_player_gold_at_least_accepts_a_whole_number_float_amount():
+    # Mirrors llm/schema.py's own whole-number-float-counts-as-integer
+    # leniency (Step 8 P6) -- a provider serializing "50" as 50.0 is still
+    # a valid amount.
+    state = make_state()
+    state.player.gold = 50
+    assert check(state, Requirement(RequirementKind.PLAYER_GOLD_AT_LEAST, {"amount": 50.0}))
+
+
+def test_player_has_item_quantity_at_least_fails_gracefully_for_a_non_numeric_amount():
+    state = make_state()
+    add_item(state.player, "grain", "Grain", quantity=5)
+    req = Requirement(RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST, {"item_id": "grain", "amount": "five"})
+    assert not check(state, req)
 
 
 def test_faction_standing_at_least_fails_gracefully_when_faction_id_is_missing():

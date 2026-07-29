@@ -121,6 +121,19 @@ def _malformed(req: Requirement) -> RequirementResult:
     return RequirementResult(req, False, f"malformed {req.kind.value} requirement target: {req.target!r}")
 
 
+def _is_number(value: object) -> bool:
+    """Same whole-number-float-counts leniency as `llm/schema.py`'s own
+    `_is_integer` (Step 8 P6) — a provider serializing an amount as `5.0`
+    is still a valid amount, but a `bool` (a Python `int` subclass) is not.
+    Guards `PLAYER_GOLD_AT_LEAST`/`PLAYER_HAS_ITEM_QUANTITY_AT_LEAST`'s `>=`
+    comparisons from crashing on a present-but-non-numeric `amount` — the
+    same "a dangling/invalid value fails gracefully, never raises" contract
+    `FACTION_STANDING_AT_LEAST`'s own `tier` check already enforces below."""
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, (int, float))
+
+
 def _check_one(state: GameState, req: Requirement) -> RequirementResult:
     if req.kind is RequirementKind.NODE_STATE:
         node_id, expected = req.target.get("node_id"), req.target.get("state")
@@ -161,7 +174,7 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
 
     if req.kind is RequirementKind.PLAYER_GOLD_AT_LEAST:
         amount = req.target.get("amount")
-        if amount is None:
+        if amount is None or not _is_number(amount):
             return _malformed(req)
         passed = state.player.gold >= amount
         return RequirementResult(req, passed, f"player has {state.player.gold} gold, needs >= {amount}")
@@ -172,7 +185,7 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
 
     if req.kind is RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST:
         item_id, amount = req.target.get("item_id"), req.target.get("amount")
-        if item_id is None or amount is None:
+        if item_id is None or amount is None or not _is_number(amount):
             return _malformed(req)
         quantity = next(
             (item.quantity for item in state.player.inventory if item.item_id == item_id), 0
@@ -190,6 +203,15 @@ def _check_one(state: GameState, req: Requirement) -> RequirementResult:
         # freeform `target` object to rule that out ahead of time.
         if faction_id is None or tier not in factions.STANDING_TIERS:
             return _malformed(req)
+        # Unlike NODE_STATE/LINK_STATUS above, `factions.standing_of` reads
+        # a PLAYER-side dict (`Player.faction_standing`) that defaults an
+        # absent entry to "neutral" regardless of whether `faction_id`
+        # actually names a real `Faction` -- without this explicit
+        # existence check, a hallucinated faction id would silently PASS
+        # ("neutral" >= "neutral") instead of being rejected as an
+        # unresolved dangling reference, same as an unknown node/link id is.
+        if faction_id not in state.world.factions:
+            return RequirementResult(req, False, f"unknown faction: {faction_id!r}")
         current = factions.standing_of(state.player, faction_id)
         passed = factions.meets_standing(state.player, faction_id, tier)
         return RequirementResult(req, passed, f"standing with {faction_id!r} is {current!r}, needs >= {tier!r}")

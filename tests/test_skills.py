@@ -1,6 +1,15 @@
 import pytest
 
-from demonclock.combat import Combatant, StatModifier, apply_skill, effective_stat, tick_upkeep, usable_skills
+from demonclock.combat import (
+    DOT_DURATION,
+    MAX_DOT_STACKS,
+    Combatant,
+    StatModifier,
+    apply_skill,
+    effective_stat,
+    tick_upkeep,
+    usable_skills,
+)
 from demonclock.skills import (
     BASIC_ATTACK,
     Effect,
@@ -170,6 +179,70 @@ def test_dot_effect_ticks_over_its_duration_then_expires():
 
     assert target.hp < hp_before
     assert target.dot_turns_remaining == 0
+
+
+def test_dot_effect_stacks_additively_when_reapplied_while_still_active():
+    caster = make_combatant(strength=20)
+    target = make_combatant(hp=1000, hp_max=1000)
+    skill = make_skill(effects=[Effect(EffectKind.DOT)])
+
+    apply_skill(caster, target, skill, [])
+    assert target.dot_damage == 15
+    assert target.dot_stacks == 1
+
+    apply_skill(caster, target, skill, [])  # reapplied before it expires
+    assert target.dot_damage == 30  # 15 + 15, not overwritten to 15
+    assert target.dot_stacks == 2
+    assert target.dot_turns_remaining == DOT_DURATION  # refreshed, not just left decremented
+
+
+def test_dot_effect_stops_adding_damage_past_the_stack_cap_but_still_refreshes_duration():
+    caster = make_combatant(strength=20)
+    target = make_combatant(hp=100000, hp_max=100000)
+    skill = make_skill(effects=[Effect(EffectKind.DOT)])
+
+    for _ in range(MAX_DOT_STACKS):
+        apply_skill(caster, target, skill, [])
+    assert target.dot_stacks == MAX_DOT_STACKS
+    damage_at_cap = target.dot_damage
+
+    target.dot_turns_remaining = 1  # about to expire, but not expired yet
+    apply_skill(caster, target, skill, [])  # one more, past the cap
+
+    assert target.dot_stacks == MAX_DOT_STACKS  # unchanged -- no 6th stack
+    assert target.dot_damage == damage_at_cap  # unchanged
+    assert target.dot_turns_remaining == DOT_DURATION  # still refreshed
+
+
+def test_dot_effect_starts_a_fresh_single_stack_after_fully_expiring():
+    caster = make_combatant(strength=20)
+    target = make_combatant(hp=1000, hp_max=1000)
+    skill = make_skill(effects=[Effect(EffectKind.DOT)])
+
+    apply_skill(caster, target, skill, [])
+    apply_skill(caster, target, skill, [])
+    assert target.dot_stacks == 2
+
+    for _ in range(DOT_DURATION):
+        tick_upkeep(target, [])
+    assert target.dot_turns_remaining == 0
+
+    apply_skill(caster, target, skill, [])  # a fresh application after full expiry
+
+    assert target.dot_stacks == 1  # NOT 3 -- the expired stacks don't carry over
+    assert target.dot_damage == 15  # back to a single stack's worth
+
+
+def test_cleanse_also_resets_dot_stacks():
+    caster = make_combatant(strength=10)
+    caster.dot_damage = 30
+    caster.dot_turns_remaining = 3
+    caster.dot_stacks = 2
+    skill = make_skill(effects=[Effect(EffectKind.CLEANSE)])
+
+    apply_skill(caster, make_combatant(), skill, [])
+
+    assert caster.dot_stacks == 0
 
 
 def test_buff_effect_raises_effective_stat_then_expires():

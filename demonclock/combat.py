@@ -64,6 +64,14 @@ DOT_DURATION = 3
 STUN_DURATION = 1
 BUFF_DEBUFF_DURATION = 3
 LIFESTEAL_FRACTION = 0.5
+# A DOT reapplied while still active ADDS its damage-per-tick to the
+# currently ticking total (rather than overwriting it) and refreshes the
+# duration -- up to this many stacked applications. Once at the cap, a
+# further reapplication still refreshes the duration (keeps the DOT alive)
+# but stops adding more damage, bounding what would otherwise be an
+# unbounded damage-per-tick ramp from repeated re-casting. Same "start
+# rough, calibrate by feel" status as every other constant here.
+MAX_DOT_STACKS = 5
 # Step 10 Stage 6: KNOCKBACK staggers the target via the same stun_turns
 # field STUN uses — a separate constant (rather than reusing STUN_DURATION
 # directly) so the two can be tuned independently later.
@@ -138,6 +146,14 @@ class Combatant:
     stun_turns: int = 0
     dot_damage: int = 0
     dot_turns_remaining: int = 0
+    # How many DOT applications have contributed to the currently-active
+    # dot_damage total (capped at MAX_DOT_STACKS) -- 0 whenever no DOT is
+    # active. Not reset to 0 by tick_upkeep on natural expiry (same as
+    # dot_damage/dot_turns_remaining already weren't); the DOT branch below
+    # treats dot_turns_remaining > 0 as the sole "is a DOT currently active"
+    # signal, so a stale dot_stacks value from an expired DOT is always
+    # overwritten, not read, the next time one is applied.
+    dot_stacks: int = 0
     modifiers: list[StatModifier] = field(default_factory=list)
     cooldowns: dict[str, int] = field(default_factory=dict)  # skill id -> turns left
     # Blocks ALL HP loss (direct hits and DOT ticks alike), however large the
@@ -314,9 +330,26 @@ def apply_skill(
             log.append(f"{opponent.name} is stunned!")
 
         elif effect.kind is EffectKind.DOT:
-            opponent.dot_damage = max(1, magnitude // 2)
+            applied = max(1, magnitude // 2)
+            if opponent.dot_turns_remaining <= 0:
+                # No DOT currently active (fresh application, or the
+                # previous one already expired) -- starts a new single stack.
+                opponent.dot_damage = applied
+                opponent.dot_stacks = 1
+                log.append(f"{opponent.name} is afflicted with a lingering wound.")
+            elif opponent.dot_stacks < MAX_DOT_STACKS:
+                # Already ticking and under the cap -- stacks additively.
+                opponent.dot_damage += applied
+                opponent.dot_stacks += 1
+                log.append(
+                    f"{opponent.name}'s lingering wound deepens "
+                    f"({opponent.dot_stacks}/{MAX_DOT_STACKS} stacks)."
+                )
+            else:
+                # At the cap -- damage doesn't grow further, but the
+                # reapplication (below) still refreshes the duration.
+                log.append(f"{opponent.name}'s lingering wound is already at its worst.")
             opponent.dot_turns_remaining = DOT_DURATION
-            log.append(f"{opponent.name} is afflicted with a lingering wound.")
 
         elif effect.kind is EffectKind.BUFF:
             caster.modifiers.append(StatModifier(stat=effect.stat, amount=magnitude, turns_remaining=BUFF_DEBUFF_DURATION))
@@ -329,6 +362,7 @@ def apply_skill(
         elif effect.kind is EffectKind.CLEANSE:
             caster.dot_damage = 0
             caster.dot_turns_remaining = 0
+            caster.dot_stacks = 0
             caster.stun_turns = 0
             before = len(caster.modifiers)
             caster.modifiers = [m for m in caster.modifiers if m.amount > 0]

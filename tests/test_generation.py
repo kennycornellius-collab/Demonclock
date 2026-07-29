@@ -544,6 +544,34 @@ def test_run_batch_commits_the_quest_even_when_places_generation_fails():
     assert {item.id for item in state.world.content_pool} == {"quest_responsive", "quest_world"}
 
 
+def test_run_batch_does_not_orphan_a_new_place_when_the_rejected_quest_never_commits():
+    # Regression test: _maybe_extend_world used to run BEFORE commit_or_repair,
+    # so a quest that fails canon check (and whose repair attempt also fails)
+    # still left a new node/link permanently in World state with nothing --
+    # no quest, no manifest -- ever referencing it.
+    from demonclock.generation.director import DirectorIntent
+    from demonclock.generation.pipeline import _generate_and_commit
+
+    failing_quest = quest_dict_needing_new_place("quest_responsive", place_hint="an abandoned mine")
+    failing_quest["manifest"]["requirements"][0]["target"]["state"] = "occupied"  # village is actually peaceful
+    registry = make_full_registry(
+        [GOOD_INTENT],
+        [situation_dict("sit_responsive")],
+        [failing_quest],  # only ONE response queued -- the repair attempt's own call also fails
+        places_responses=[new_place_dict(direction="north")],
+    )
+    state = make_state(registry)
+    context = build_batch_context(state)
+    intent = DirectorIntent.from_dict(GOOD_INTENT)
+
+    _generate_and_commit(state, registry, context, intent, "responsive")
+
+    assert state.world.content_pool == []  # the quest never committed
+    assert "abandoned_mine" not in state.world.nodes  # and nothing was orphaned into World state
+    places_client = registry._explicit_clients["places_mock"]
+    assert places_client.call_count == 0  # Places was never even asked
+
+
 # -- NPC agent (Step 10 Stage 3) ---------------------------------------------
 
 def test_run_npc_parses_a_well_formed_new_npc():

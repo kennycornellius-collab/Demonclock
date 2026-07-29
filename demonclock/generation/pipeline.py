@@ -120,17 +120,23 @@ def _generate_flavor(state: GameState, registry: LLMRegistry, context: dict) -> 
 def _generate_and_commit(
     state: GameState, registry: LLMRegistry, context: dict, intent: DirectorIntent, stream: str,
 ) -> None:
-    """One stream's Story -> Quest -> (maybe) Places -> commit-or-repair.
+    """One stream's Story -> Quest -> commit-or-repair -> (maybe) Places/NPC.
     Swallows a generation failure for THIS stream only -- it must never
-    cancel the other stream or the Director's already-returned intent."""
+    cancel the other stream or the Director's already-returned intent.
+
+    Places/NPC extension runs AFTER commit_or_repair, not before, and only
+    when the quest actually ends up in the pool (COMMITTED or REPAIRED) --
+    otherwise a quest that fails canon check (and whose repair attempt also
+    fails) would still have already written a new node/link/NPC into live
+    `World` state with nothing left to reference it. Uses `result.item`
+    (the item that actually committed), not the original `item`, since a
+    REPAIRED item can carry different needs_new_place/needs_new_npc/hint
+    fields than what was first generated."""
     try:
         situation = run_story(registry, context, intent, stream)
         item = run_quest(registry, context, situation)
     except _DEGRADE_ON:
         return
-
-    _maybe_extend_world(state, registry, context, situation, item)
-    _maybe_add_npc(state, registry, context, situation, item)
 
     def repair_fn(failing_item: GeneratedItem, failures: list[RequirementResult]) -> GeneratedItem | None:
         try:
@@ -138,7 +144,12 @@ def _generate_and_commit(
         except _DEGRADE_ON:
             return None
 
-    commit_or_repair(state, state.world.content_pool, item, repair_fn=repair_fn)
+    result = commit_or_repair(state, state.world.content_pool, item, repair_fn=repair_fn)
+    if result.item is None:
+        return  # REJECTED -- never touch live World state for a quest that didn't commit
+
+    _maybe_extend_world(state, registry, context, situation, result.item)
+    _maybe_add_npc(state, registry, context, situation, result.item)
 
 
 def _maybe_extend_world(

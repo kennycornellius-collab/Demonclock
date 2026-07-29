@@ -64,8 +64,8 @@ class LLMRegistry:
 
         last_error: LLMProviderError | None = None
         for spec in chain:
-            client = self._client_for(spec)
             try:
+                client = self._client_for(spec)
                 return client.generate_structured(system, user, schema)
             except LLMProviderError as exc:
                 last_error = exc
@@ -82,18 +82,30 @@ class LLMRegistry:
         return self._built_clients[cache_key]
 
     def _build_client(self, spec: ProviderSpec) -> LLMClient:
-        provider_class = PROVIDER_CLASSES.get(spec.provider)
-        if provider_class is None:
-            raise ValueError(
-                f"unknown provider {spec.provider!r} -- not in PROVIDER_CLASSES "
-                "and not supplied via extra_clients"
-            )
-        if spec.provider == "mock":
-            # MockClient takes no config-driven constructor args (no api_key)
-            # -- real test usage should supply a pre-built instance via
-            # extra_clients instead; this bare fallback just avoids a crash
-            # if "mock" ever appears in a config file.
-            return provider_class()
-        api_key = self._config.api_keys.get(spec.provider, "")
-        kwargs = {"model": spec.model} if spec.model else {}
-        return provider_class(api_key=api_key, **kwargs)
+        """Construction failures (an unknown provider name, or -- concretely,
+        `GeminiClient.__init__` raising a bare `ValueError` for an empty
+        `api_key`, reachable via `DEMONCLOCK_LLM_CONFIG` routing a role to
+        "gemini" without `GEMINI_API_KEY` set) are wrapped as
+        `LLMProviderError` rather than left to propagate as `ValueError` --
+        a misconfigured role must degrade the same way every other
+        generation failure already does (moves on to the next provider in
+        the chain, or bubbles up as the one exception type every caller's
+        `_DEGRADE_ON` already catches), not crash the whole turn."""
+        try:
+            provider_class = PROVIDER_CLASSES.get(spec.provider)
+            if provider_class is None:
+                raise ValueError(
+                    f"unknown provider {spec.provider!r} -- not in PROVIDER_CLASSES "
+                    "and not supplied via extra_clients"
+                )
+            if spec.provider == "mock":
+                # MockClient takes no config-driven constructor args (no
+                # api_key) -- real test usage should supply a pre-built
+                # instance via extra_clients instead; this bare fallback
+                # just avoids a crash if "mock" ever appears in a config file.
+                return provider_class()
+            api_key = self._config.api_keys.get(spec.provider, "")
+            kwargs = {"model": spec.model} if spec.model else {}
+            return provider_class(api_key=api_key, **kwargs)
+        except ValueError as exc:
+            raise LLMProviderError(f"{spec.provider}: failed to construct client: {exc}") from exc

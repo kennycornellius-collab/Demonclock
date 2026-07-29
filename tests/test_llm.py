@@ -157,6 +157,30 @@ def test_registry_enabled_reflects_whether_any_role_has_a_provider():
     assert LLMRegistry(make_config("director", [ProviderSpec(provider="mock")])).enabled
 
 
+def test_registry_degrades_gracefully_when_a_role_is_configured_without_an_api_key():
+    # Regression test: a DEMONCLOCK_LLM_CONFIG file can route a role to
+    # "gemini" without GEMINI_API_KEY set (config.api_keys stays empty) --
+    # GeminiClient.__init__ raises a bare ValueError for an empty api_key,
+    # which used to propagate straight out of generate() uncaught instead
+    # of degrading like every other generation failure.
+    config = make_config("director", [ProviderSpec(provider="gemini")])
+    registry = LLMRegistry(config)  # no extra_clients -- forces a REAL GeminiClient build
+
+    with pytest.raises(LLMProviderError):
+        registry.generate("director", "sys", "usr", SCHEMA)
+
+
+def test_registry_falls_back_past_a_role_missing_its_api_key():
+    good = MockClient(responses=[{"pressure": 3}])
+    config = make_config("director", [ProviderSpec(provider="gemini"), ProviderSpec(provider="good")])
+    registry = LLMRegistry(config, extra_clients={"good": good})
+
+    result = registry.generate("director", "sys", "usr", SCHEMA)
+
+    assert result == {"pressure": 3}
+    assert good.call_count == 1
+
+
 # -- GenerationConfig.from_env ---------------------------------------------
 #
 # dotenv_path=None everywhere below: these tests exercise the pure

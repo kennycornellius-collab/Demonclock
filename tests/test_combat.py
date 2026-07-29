@@ -1,9 +1,12 @@
 import random
 
+import pytest
+
 from demonclock.combat import (
     CRIT_MULTIPLIER,
     VARIANCE,
     Combatant,
+    CombatError,
     CombatResult,
     apply_skill,
     choose_enemy_skill,
@@ -516,6 +519,18 @@ def test_run_group_combat_flee_returns_immediately():
     assert result is CombatResult.FLED
     assert player.hp == 50
     assert enemies[0].hp == 100
+
+
+def test_run_group_combat_rejects_an_empty_enemy_list_with_a_clear_error():
+    # Regression test: an empty `enemies` list used to reach
+    # `_enemies_desc`'s own `named[-1]` indexing at the very end of a
+    # (vacuously immediately "won") fight, raising a confusing IndexError
+    # far from the actual mistake -- now fails fast, at the actual call
+    # site, with an honest message.
+    player = make_player()
+
+    with pytest.raises(CombatError):
+        run_group_combat(player, [], choose_action=lambda *_a: None)
 
 
 def test_run_group_combat_defeat_captures_the_player():

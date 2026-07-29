@@ -106,6 +106,10 @@ class CombatResult(str, Enum):
     FLED = "fled"
 
 
+class CombatError(ValueError):
+    pass
+
+
 @dataclass
 class StatModifier:
     stat: StatType
@@ -460,7 +464,16 @@ def run_group_combat(
     reproduced here via a stable sort with the fighter listed first).
     Guaranteed to terminate (same `MAX_COMBAT_ROUNDS` circuit breaker
     `run_combat` already had) with a stalemate FLED.
-    """
+
+    Raises `CombatError` for an empty `enemies` list rather than letting one
+    reach `_enemies_desc`'s own `named[-1]` indexing at the very end of the
+    fight (a confusing `IndexError` far from the actual mistake) — a fight
+    with no enemies should never legitimately be started in the first place
+    (every real caller builds `enemies` from a non-empty source, e.g.
+    `WILD_ENEMY_BY_NODE`), so this is a fail-fast guard against a caller
+    bug, not a real gameplay state to degrade gracefully."""
+    if not enemies:
+        raise CombatError("run_group_combat requires at least one enemy")
     rng = rng if rng is not None else random.Random()
     fighter = Combatant.from_player(player)
     log: list[str] = []

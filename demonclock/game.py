@@ -154,11 +154,11 @@ def _handle_trade(state: GameState, node) -> None:
         return
 
     good_choice = input("Which good? (number) ").strip()
-    try:
-        good_id = goods[int(good_choice) - 1][0]
-    except (ValueError, IndexError):
+    selected = _select(goods, good_choice)
+    if selected is None:
         print("Not a valid choice.")
         return
+    good_id = selected[0]
 
     quantity = _prompt_int("Quantity: ", default=1)
     log = trade.buy(state, node.id, good_id, quantity) if choice == "1" else trade.sell(
@@ -222,9 +222,8 @@ def _handle_craft(state: GameState, node) -> None:
         print(f"  {i}) {recipe.name} — needs {inputs_desc} -> {recipe.output_quantity} {recipe.output_name}")
 
     choice = input(f"{len(recipes) + 1}) Leave\n> ").strip()
-    try:
-        recipe = recipes[int(choice) - 1]
-    except (ValueError, IndexError):
+    recipe = _select(recipes, choice)
+    if recipe is None:
         return
 
     for line in crafting.craft(state, recipe.id):
@@ -254,24 +253,26 @@ def _handle_fight(state: GameState, enemy_ids: list[str]) -> None:
         for i, skill in enumerate(options, start=1):
             print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
         print(f"  {len(options) + 1}) Flee")
-        sub_choice = input("> ").strip()
-        if sub_choice == str(len(options) + 1):
-            return None
-        try:
-            skill = options[int(sub_choice) - 1]
-        except (ValueError, IndexError):
-            skill = options[0]  # invalid input defaults to the first (Basic Attack)
+        while True:
+            sub_choice = input("> ").strip()
+            if sub_choice == str(len(options) + 1):
+                return None
+            skill = _select(options, sub_choice)
+            if skill is not None:
+                break
+            print("Not a valid choice.")
 
         target = alive_enemies[0]
         if len(alive_enemies) > 1:
             print("Target:")
             for i, candidate in enumerate(alive_enemies, start=1):
                 print(f"  {i}) {candidate.name}")
-            target_choice = input("> ").strip()
-            try:
-                target = alive_enemies[int(target_choice) - 1]
-            except (ValueError, IndexError):
-                pass  # invalid input defaults to the first alive enemy
+            while True:
+                target_choice = input("> ").strip()
+                target = _select(alive_enemies, target_choice)
+                if target is not None:
+                    break
+                print("Not a valid choice.")
         return skill, target
 
     result, log = combat.run_group_combat(state.player, enemies, choose_action, current_day=state.clock.current_day)
@@ -311,24 +312,26 @@ def _handle_demon_king(state: GameState) -> None:
         for i, skill in enumerate(options, start=1):
             print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
         print(f"  {len(options) + 1}) Flee")
-        sub_choice = input("> ").strip()
-        if sub_choice == str(len(options) + 1):
-            return None
-        try:
-            skill = options[int(sub_choice) - 1]
-        except (ValueError, IndexError):
-            skill = options[0]  # invalid input defaults to the first (Basic Attack)
+        while True:
+            sub_choice = input("> ").strip()
+            if sub_choice == str(len(options) + 1):
+                return None
+            skill = _select(options, sub_choice)
+            if skill is not None:
+                break
+            print("Not a valid choice.")
 
         target = targets[0]
         if len(targets) > 1:
             print("Target:")
             for i, candidate in enumerate(targets, start=1):
                 print(f"  {i}) {candidate.name}")
-            target_choice = input("> ").strip()
-            try:
-                target = targets[int(target_choice) - 1]
-            except (ValueError, IndexError):
-                pass  # invalid input defaults to the boss (targets[0])
+            while True:
+                target_choice = input("> ").strip()
+                target = _select(targets, target_choice)
+                if target is not None:
+                    break
+                print("Not a valid choice.")
         return skill, target
 
     result, log = boss.run_encounter(state.player, boss.DEMON_KING_ENCOUNTER, choose_action)
@@ -376,12 +379,11 @@ def handle_atlas(state: GameState) -> None:
     choice = input("Fast-travel to which? (number, blank to cancel) ").strip()
     if not choice:
         return
-    try:
-        index = int(choice)
-        destination_id = entries[index - 1][0]
-    except (ValueError, IndexError):
+    selected = _select(entries, choice)
+    if selected is None:
         print("Not a valid choice.")
         return
+    destination_id = selected[0]
 
     if destination_id == state.player.location_id:
         print("You're already there.")
@@ -439,9 +441,8 @@ def handle_quests(state: GameState) -> None:
 
         choice = input("Turn in which quest? (number, blank to skip) ").strip()
         if choice:
-            try:
-                target = accepted[int(choice) - 1]
-            except (ValueError, IndexError):
+            target = _select(accepted, choice)
+            if target is None:
                 print("Not a valid choice.")
             else:
                 for line in quests.turn_in(state, target):
@@ -492,11 +493,11 @@ def _choose_stat(prompt: str) -> skills.StatType:
     for i, stat in enumerate(options, start=1):
         print(f"  {i}) {stat.value}")
     raw = input("> ").strip()
-    try:
-        return options[int(raw) - 1]
-    except (ValueError, IndexError):
+    selected = _select(options, raw)
+    if selected is None:
         print(f"Not a valid choice, defaulting to {options[0].value}.")
         return options[0]
+    return selected
 
 
 def _choose_effects() -> list[skills.Effect]:
@@ -511,15 +512,29 @@ def _choose_effects() -> list[skills.Effect]:
         raw = input(f"Add effect # ({len(chosen)} chosen so far, blank to finish): ").strip()
         if not raw:
             return chosen
-        try:
-            kind = kinds[int(raw) - 1]
-        except (ValueError, IndexError):
+        kind = _select(kinds, raw)
+        if kind is None:
             print("Not a valid choice.")
             continue
         stat = None
         if kind in (skills.EffectKind.BUFF, skills.EffectKind.DEBUFF):
             stat = _choose_stat(f"Which stat does {kind.value} target?")
         chosen.append(skills.Effect(kind, stat=stat))
+
+
+def _select(items: list, choice: str):
+    """Resolves a 1-based menu `choice` string to the selected item, or
+    `None` if `choice` isn't a valid selection. Centralizes the fix for a
+    long-standing bug: Python allows negative list indices, so a bare
+    `items[int(choice) - 1]` silently resolves "0" to the LAST item instead
+    of correctly rejecting it as invalid -- every numbered-menu site in this
+    module now goes through this one bounds-checked helper instead of
+    repeating the same off-by-one-prone indexing."""
+    try:
+        index = int(choice) - 1
+    except ValueError:
+        return None
+    return items[index] if 0 <= index < len(items) else None
 
 
 def _prompt_int(prompt: str, default: int) -> int:

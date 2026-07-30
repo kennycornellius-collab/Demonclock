@@ -11,6 +11,7 @@ many-round) fight -- isolates the callback's own input-handling logic, which
 is what these bugs actually lived in.
 """
 from demonclock import game
+from demonclock.canon import PreconditionManifest
 from demonclock.clock import Clock
 from demonclock.combat import BASIC_ATTACK, Combatant, CombatResult
 from demonclock.boss import EncounterResult
@@ -20,6 +21,7 @@ from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
 from demonclock.models import NPC, Node, Player
 from demonclock.parser import ActionType
+from demonclock.pool import GeneratedItem
 from demonclock.seed import new_default_world
 from demonclock.skills import EffectKind, StatType
 from demonclock.state import GameState
@@ -296,6 +298,53 @@ def test_free_text_talk_with_a_target_resolves_the_right_npc_among_several(monke
     out = capsys.readouterr().out
     assert "--- Bram ---" in out
     assert "--- Anna ---" not in out
+
+
+def _npc_quest_item(item_id: str, title: str, giver_npc_id: str, reward_gold: int = 15) -> GeneratedItem:
+    return GeneratedItem(
+        id=item_id,
+        payload={"title": title, "reward_gold": reward_gold, "giver_npc_id": giver_npc_id},
+        manifest=PreconditionManifest([]),
+    )
+
+
+def test_handle_talk_offers_and_accepts_a_pooled_quest_tied_to_the_npc(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # Hana the Miller is "miller_hana"
+    item = _npc_quest_item("deliver_flour", "Deliver Flour", "miller_hana")
+    state.world.content_pool.append(item)
+    feed_inputs(monkeypatch, ["talk", "y"])
+
+    game.handle_free_text(state)
+
+    out = capsys.readouterr().out
+    assert "Deliver Flour" in out
+    assert "Quest accepted." in out
+    assert state.player.accepted_quests == [{**item.payload, "id": "deliver_flour"}]
+    assert state.world.content_pool == []  # consumed, whether accepted or not
+
+
+def test_handle_talk_declining_the_offered_quest_does_not_accept_it(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    state.world.content_pool.append(_npc_quest_item("deliver_flour", "Deliver Flour", "miller_hana"))
+    feed_inputs(monkeypatch, ["talk", "n"])
+
+    game.handle_free_text(state)
+
+    assert state.player.accepted_quests == []
+    assert state.world.content_pool == []  # still not re-queued, same as handle_quests' own decline
+
+
+def test_handle_talk_does_not_offer_a_quest_tied_to_a_different_npc(monkeypatch, capsys):
+    state = make_default_state(location_id="village")  # only Hana is here
+    other = _npc_quest_item("warden_task", "Warden's Task", "market_warden_oskar")
+    state.world.content_pool.append(other)
+    feed_inputs(monkeypatch, ["talk"])
+
+    game.handle_free_text(state)
+
+    out = capsys.readouterr().out
+    assert "Warden's Task" not in out
+    assert state.world.content_pool == [other]  # left in place for Oskar's own Talk (or the Quests menu)
 
 
 def test_free_text_talk_with_no_target_and_several_npcs_prompts_for_a_pick(monkeypatch, capsys):

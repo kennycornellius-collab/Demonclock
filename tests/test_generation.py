@@ -241,6 +241,22 @@ def test_batch_context_known_factions_is_empty_when_none_are_seeded():
     assert context["known_factions"] == []
 
 
+def test_batch_context_includes_npcs_at_the_current_node_and_neighbors():
+    # NPC-quest link follow-up: without this, the Quest agent had no
+    # legitimate NPC id to ever set giver_npc_id to other than hallucinating
+    # one.
+    state = make_state()
+    state.world.add_npc(NPC(id="hana", name="Hana", location_id="village"))
+    state.world.add_npc(NPC(id="oskar", name="Oskar", location_id="market"))  # market is village's neighbor
+    state.world.add_npc(NPC(id="far_npc", name="Far NPC", location_id="far_away"))
+
+    context = build_batch_context(state)
+
+    npc_ids = {npc["id"] for npc in context["known_npcs"]}
+    assert npc_ids == {"hana", "oskar"}
+    assert "far_npc" not in npc_ids  # far_away is unreachable in one hop
+
+
 # -- Director agent ----------------------------------------------------
 
 def test_run_director_parses_a_well_formed_intent():
@@ -901,6 +917,16 @@ def test_quest_system_prompt_mentions_faction_standing_delta():
 def test_quest_schema_declares_faction_standing_delta_as_optional():
     assert "faction_standing_delta" not in QUEST_SCHEMA["required"]
     assert QUEST_SCHEMA["properties"]["faction_standing_delta"]["properties"]["tiers"] == {"type": "integer"}
+
+
+def test_quest_system_prompt_mentions_giver_npc_id():
+    assert "giver_npc_id" in QUEST_SYSTEM_PROMPT
+    assert "known_npcs" in QUEST_SYSTEM_PROMPT
+
+
+def test_quest_schema_declares_giver_npc_id_as_optional_string():
+    assert "giver_npc_id" not in QUEST_SCHEMA["required"]
+    assert QUEST_SCHEMA["properties"]["giver_npc_id"] == {"type": "string"}
 
 
 def test_quest_system_prompt_documents_every_requirement_kinds_target_shape():

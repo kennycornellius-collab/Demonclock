@@ -55,6 +55,16 @@ def build_batch_context(state: GameState) -> dict:
             {"id": faction.id, "name": faction.name, "description": faction.description}
             for faction in world.factions.values()
         ],
+        # NPC-quest link follow-up (updates.md, surfaced 2026-07-29): NPCs at
+        # the current node + its immediate neighbors, same bound already
+        # applied to nodes -- without this, the Quest agent had no
+        # legitimate NPC id to ever set giver_npc_id (quest.py) to other
+        # than hallucinating one.
+        "known_npcs": [
+            {"id": npc.id, "name": npc.name, "location_id": npc.location_id}
+            for node in [current_node, *neighbor_nodes]
+            for npc in world.npcs_at(node.id)
+        ],
         "recent_events": [
             {
                 "day": entry.day,

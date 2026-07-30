@@ -104,3 +104,30 @@ def pull(state: GameState, pool: list[GeneratedItem]) -> GeneratedItem | None:
         if check_manifest(state, item.manifest).passed:
             return item
     return None
+
+
+def pull_for_npc(state: GameState, pool: list[GeneratedItem], npc_id: str) -> GeneratedItem | None:
+    """NPC-quest link follow-up (updates.md, surfaced 2026-07-29): the same
+    pull contract as `pull` (re-validates against LIVE state, silently
+    discards anything found stale along the way — "a stale item must never
+    reach the player") but scans the WHOLE pool for the oldest item whose
+    payload['giver_npc_id'] matches `npc_id`, rather than only ever looking
+    at the front. Unlike `pull`, items that are still valid but don't match
+    `npc_id` are left in place (not consumed) — a Talk conversation with one
+    NPC must not silently drain quests meant for the generic Quests menu or
+    a different NPC entirely. Returns None if nothing in the pool is tied
+    to this NPC."""
+    remaining: list[GeneratedItem] = []
+    found: GeneratedItem | None = None
+    for item in pool:
+        if found is not None:
+            remaining.append(item)
+            continue
+        if not check_manifest(state, item.manifest).passed:
+            continue  # stale -- discard, same as pull()
+        if item.payload.get("giver_npc_id") == npc_id:
+            found = item
+            continue
+        remaining.append(item)
+    pool[:] = remaining
+    return found

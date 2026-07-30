@@ -94,14 +94,19 @@ SYSTEM_PROMPT = (
     "and tiers is a small integer -- usually 1, rarely 2 -- positive to "
     "move standing toward friendlier tiers, negative toward more hostile "
     "ones. Omit faction_standing_delta entirely for an ordinary quest with "
-    "no faction impact. The "
+    "no faction impact. If this quest naturally reads as something an NPC "
+    "in the context's known_npcs list would personally hand out (e.g. the "
+    "situation centers on or near that NPC), set giver_npc_id to that "
+    "NPC's own id -- never invent one, and never set this if known_npcs is "
+    "empty or no NPC in it is a natural fit. Leave giver_npc_id unset for "
+    "an ordinary quest with no specific giver (most quests). The "
     "context's player.derived_role_hint is a short "
     "phrase describing who the player is becoming (e.g. 'trade-focused, "
     "combat-averse') -- let it color the title's and description's word "
     "choice/tone, never reward_gold, needs_new_place, needs_new_npc, "
-    "faction_standing_delta, or any requirement in either manifest, all of "
-    "which must stay strictly determined by the situation and existing "
-    "world truth."
+    "faction_standing_delta, giver_npc_id, or any requirement in either "
+    "manifest, all of which must stay strictly determined by the situation "
+    "and existing world truth."
 )
 
 _MANIFEST_SCHEMA = {
@@ -151,6 +156,17 @@ QUEST_SCHEMA = {
             },
             "required": ["faction_id", "tiers"],
         },
+        # NPC-quest link follow-up (updates.md, surfaced 2026-07-29): which
+        # NPC (if any) hands this quest out -- game._handle_talk surfaces a
+        # matching pool item inline during that NPC's conversation
+        # (pool.pull_for_npc), instead of the player only ever finding it
+        # via the separate Quests menu. Optional, same pattern as every
+        # other extension field above; must come from context's known_npcs
+        # (context.py) -- a giver_npc_id that doesn't resolve to a real NPC
+        # simply never matches in pull_for_npc's lookup, same "a dangling
+        # AI-proposed reference degrades gracefully, never crashes" posture
+        # as faction_standing_delta above.
+        "giver_npc_id": {"type": "string"},
         # The precondition manifest (SPEC.md §8): gates whether this quest is
         # still valid to OFFER. pool.commit_or_repair/pool.pull are the only
         # things that ever read this one.

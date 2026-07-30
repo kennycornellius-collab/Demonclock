@@ -212,13 +212,22 @@ def _handle_trade(state: GameState, node) -> None:
 def _handle_talk(state: GameState, npc: NPC) -> None:
     """Step 10 Stage 3 (SPEC.md §6/§7): a live, one-call-per-conversation
     dialogue exchange — see generation/dialogue.py for why this is never
-    batch-generated/pooled like Story/Quest/Places/Flavor. Every path here
-    (a generated option or free text) is pure flavor, a deliberate v1 scope
-    call — nothing said here can grant a quest, change gold/items, or shift
-    standing."""
+    batch-generated/pooled like Story/Quest/Places/Flavor. The AI dialogue
+    itself (a generated option or free text) is still pure flavor — nothing
+    SAID here can grant a quest, change gold/items, or shift standing. NPC-
+    quest link follow-up (updates.md, surfaced 2026-07-29): a Talk visit
+    now ALSO surfaces (via the engine-driven, canon-checked content pool,
+    never the AI dialogue) any pooled quest tied to this specific NPC —
+    same accept/decline flow handle_quests already offers, just discovered
+    here instead of only via the separate Quests menu."""
     print(f"--- {npc.name} ---")
     if npc.description:
         print(npc.description)
+
+    offered = pool.pull_for_npc(state, state.world.content_pool, npc.id)
+    if offered is not None:
+        print(f"{npc.name} has something for you:")
+        _offer_quest(state, offered)
 
     hint = behavior.derived_role_hint(state.player.behavior)
     opening = run_dialogue_opening(state.generation, npc, hint)
@@ -497,6 +506,14 @@ def handle_quests(state: GameState) -> None:
         return
 
     print("--- A new lead ---")
+    _offer_quest(state, item)
+
+
+def _offer_quest(state: GameState, item: pool.GeneratedItem) -> None:
+    """Shared by handle_quests' generic pull and _handle_talk's NPC-tied
+    pull (NPC-quest link follow-up, updates.md, surfaced 2026-07-29) --
+    same print/prompt/accept shape either way, just a different source for
+    `item`."""
     print(f"  {item.payload.get('title', item.id)}")
     print(f"  {item.payload.get('description', '')}")
     print(f"  Reward: {item.payload.get('reward_gold', 0)} gold")

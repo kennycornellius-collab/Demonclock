@@ -1,3 +1,4 @@
+from demonclock.journal import JournalEntry
 from demonclock.player import new_player
 from demonclock.setback import (
     ESCAPE_AFTER_DAYS,
@@ -50,7 +51,7 @@ def test_pay_ransom_succeeds_when_affordable():
     capture_player(player, current_day=0)
     gold_after_capture = player.gold
 
-    log = pay_ransom(player)
+    log = pay_ransom(player, current_day=0)
 
     assert player.captured is False
     assert player.ransom_cost == 0
@@ -63,7 +64,7 @@ def test_pay_ransom_fails_when_not_enough_gold():
     player = make_player(gold=0)
     capture_player(player, current_day=0)
 
-    log = pay_ransom(player)
+    log = pay_ransom(player, current_day=0)
 
     assert player.captured is True  # still held
     assert any("need" in line.lower() for line in log)
@@ -72,7 +73,7 @@ def test_pay_ransom_fails_when_not_enough_gold():
 def test_pay_ransom_when_not_captured_is_a_no_op():
     player = make_player(gold=1000)
 
-    log = pay_ransom(player)
+    log = pay_ransom(player, current_day=0)
 
     assert player.gold == 1000
     assert any("not captured" in line.lower() for line in log)
@@ -102,3 +103,49 @@ def test_check_escape_on_the_free_day_releases_even_with_zero_gold():
 def test_check_escape_when_not_captured_is_a_no_op():
     player = make_player()
     assert check_escape(player, current_day=999) == []
+
+
+# -- journal recording (updates.md's player-facing journal/recap) ----------
+
+def test_capture_player_records_a_journal_entry():
+    player = make_player(gold=100)
+    capture_player(player, current_day=10)
+    assert player.journal == [JournalEntry(day=10, description="Captured.")]
+
+
+def test_pay_ransom_success_records_a_journal_entry():
+    player = make_player(gold=100)
+    capture_player(player, current_day=0)
+    pay_ransom(player, current_day=2)
+    assert player.journal[-1].day == 2
+    assert "ransom" in player.journal[-1].description.lower()
+
+
+def test_pay_ransom_failure_does_not_record_a_journal_entry():
+    player = make_player(gold=0)
+    capture_player(player, current_day=0)
+    entries_after_capture = len(player.journal)
+
+    pay_ransom(player, current_day=1)
+
+    assert len(player.journal) == entries_after_capture  # no new entry on failure
+
+
+def test_check_escape_success_records_a_journal_entry():
+    player = make_player(gold=0)
+    capture_player(player, current_day=0)
+
+    check_escape(player, current_day=ESCAPE_AFTER_DAYS)
+
+    assert player.journal[-1].day == ESCAPE_AFTER_DAYS
+    assert "slipped away" in player.journal[-1].description.lower()
+
+
+def test_check_escape_still_held_does_not_record_a_journal_entry():
+    player = make_player(gold=0)
+    capture_player(player, current_day=0)
+    entries_after_capture = len(player.journal)
+
+    check_escape(player, current_day=ESCAPE_AFTER_DAYS - 1)
+
+    assert len(player.journal) == entries_after_capture

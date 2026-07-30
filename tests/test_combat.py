@@ -386,6 +386,44 @@ def test_run_combat_victory_does_not_capture_the_player():
     assert player.captured is False
 
 
+def test_run_combat_victory_records_a_journal_entry():
+    player = make_player(strength=50, defense=20, agility=20, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK, current_day=7)
+
+    assert len(player.journal) == 1
+    assert player.journal[0].day == 7
+    assert "defeated" in player.journal[0].description.lower()
+    assert "weakling" in player.journal[0].description.lower()
+
+
+def test_run_combat_defeat_records_a_journal_entry():
+    # Two related entries land: the fight loss (combat.py) and the
+    # resulting capture (setback.capture_player, its own journal entry) --
+    # same "two related printed log lines together" shape combat.py's own
+    # narration already has for this exact moment.
+    player = make_player(strength=1, defense=0, agility=1, hp=5, hp_max=20, gold=100)
+    enemy = make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=20, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK, current_day=7)
+
+    assert len(player.journal) == 2
+    assert player.journal[0].day == 7
+    assert "defeated by" in player.journal[0].description.lower()
+    assert "brute" in player.journal[0].description.lower()
+    assert "captured" in player.journal[1].description.lower()
+
+
+def test_run_combat_fleeing_does_not_record_a_journal_entry():
+    player = make_player(strength=1, defense=0, agility=100, hp=50, hp_max=50)
+    enemy = make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: None)
+
+    assert player.journal == []
+
+
 def test_run_combat_records_a_combat_action_per_player_cast():
     player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
     enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import behavior, knowledge, newspaper, setback, sim
+from . import behavior, journal, knowledge, newspaper, setback, sim
 from .parser import Action, ActionType
 from .resolve import resolve_entity
 from .state import GameState
@@ -75,11 +75,14 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
         reason = link.block_reason or "blocked"
         return Outcome(f"The way {direction} is blocked ({reason}).", ok=False)
 
+    first_visit = link.to_id not in state.player.beliefs
     state.player.location_id = link.to_id
     behavior.record_location(state.player.behavior, link.to_id)
     tick_log = sim.advance_time(state, link.travel_days)
     node = state.world.nodes[link.to_id]
     knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)
+    if first_visit:
+        journal.record(state.player.journal, state.clock.current_day, f"First visited {node.name}.")
     message = (
         f"You travel {direction} to {node.name} ({link.travel_days} day(s) pass, "
         f"now day {state.clock.current_day})."
@@ -115,6 +118,10 @@ def resolve_fast_travel(state: GameState, destination_id: str) -> Outcome:
     tick_log = sim.advance_time(state, route.total_days)
     node = state.world.nodes[destination_id]
     knowledge.observe_node(state.player.beliefs, node, state.clock.current_day)
+    # No "first visited" journal entry here, unlike _resolve_move -- Atlas's
+    # own earlier guard already requires destination_id to be in player.
+    # beliefs before fast-travel can even be attempted, so it can never
+    # actually be a first visit.
     message = (
         f"You fast-travel to {node.name} ({route.total_days} day(s) pass, "
         f"now day {state.clock.current_day})."

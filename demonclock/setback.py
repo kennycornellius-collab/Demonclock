@@ -15,6 +15,7 @@ works even for a player captured with zero gold.
 """
 from __future__ import annotations
 
+from . import journal
 from .models import Player
 
 # Placeholder tuning constants — same "start rough, calibrate by feel" status
@@ -40,10 +41,11 @@ def capture_player(player: Player, current_day: int) -> list[str]:
         f"Pay a {RANSOM_COST} gold ransom to go free immediately, or wait — "
         f"you'll find a chance to slip away by day {player.free_by_day} regardless."
     )
+    journal.record(player.journal, current_day, "Captured.")
     return log
 
 
-def pay_ransom(player: Player) -> list[str]:
+def pay_ransom(player: Player, current_day: int) -> list[str]:
     """The gold-based recovery path. Never mutates state on failure."""
     if not player.captured:
         return ["You are not captured."]
@@ -52,6 +54,7 @@ def pay_ransom(player: Player) -> list[str]:
 
     player.gold -= player.ransom_cost
     _release(player)
+    journal.record(player.journal, current_day, "Paid a ransom and went free.")
     return ["You pay the ransom and go free."]
 
 
@@ -62,6 +65,7 @@ def check_escape(player: Player, current_day: int) -> list[str]:
     if not player.captured or current_day < player.free_by_day:
         return []
     _release(player)
+    journal.record(player.journal, current_day, "Slipped away from captivity.")
     return ["You find a chance to slip away — you are free!"]
 
 

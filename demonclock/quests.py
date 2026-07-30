@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from . import factions
+from . import factions, journal
 from .canon import CheckResult, PreconditionManifest, check_manifest
 
 if TYPE_CHECKING:
@@ -50,6 +50,7 @@ def turn_in(state: GameState, quest: dict) -> list[str]:
     state.player.gold += reward
     title = quest.get("title", quest.get("id", "quest"))
     lines = [f"Quest complete: {title}! You receive {reward} gold."]
+    journal.record(state.player.journal, state.clock.current_day, f"Completed quest: {title} (+{reward} gold).")
 
     delta = quest.get("faction_standing_delta")
     if isinstance(delta, dict):

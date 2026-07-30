@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .behavior import BehaviorProfile
+from .journal import JournalEntry
 from .knowledge import NodeBelief
 from .skills import Skill
 
@@ -132,3 +133,10 @@ class Player:
     # standing off that default (quest turn-in, via factions.adjust_standing --
     # a 2026-07-30 follow-up).
     faction_standing: dict[str, str] = field(default_factory=dict)
+    # Player-facing journal/recap (updates.md, surfaced 2026-07-29): the
+    # player's own story so far -- places first visited, fights won/lost,
+    # quests completed, captures/escapes -- see journal.py for why this is
+    # deliberately separate from World.event_log rather than reusing it.
+    # Written ONLY by journal.record, from combat.py/setback.py/quests.py/
+    # actions.py/game.py at the point each of those facts becomes true.
+    journal: list[JournalEntry] = field(default_factory=list)

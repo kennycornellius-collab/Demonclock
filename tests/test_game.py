@@ -176,6 +176,53 @@ def test_handle_demon_king_reprompts_on_an_invalid_target_choice_instead_of_defa
     assert target is not captured["boss"]
 
 
+def test_handle_demon_king_victory_records_a_journal_entry(monkeypatch, capsys):
+    state = make_state()
+    state.clock = Clock(current_day=30)
+
+    def fake_run_encounter(player, encounter, choose_action, rng=None):
+        return EncounterResult.VICTORY, ["stub log"]
+
+    monkeypatch.setattr(game.boss, "run_encounter", fake_run_encounter)
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_demon_king(state)
+
+    assert state.player.journal[-1].day == 30
+    assert "demon king" in state.player.journal[-1].description.lower()
+    assert "defeated the" in state.player.journal[-1].description.lower()
+
+
+def test_handle_demon_king_defeat_records_a_journal_entry(monkeypatch, capsys):
+    state = make_state()
+    state.clock = Clock(current_day=30)
+
+    def fake_run_encounter(player, encounter, choose_action, rng=None):
+        return EncounterResult.DEFEAT, ["stub log"]
+
+    monkeypatch.setattr(game.boss, "run_encounter", fake_run_encounter)
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_demon_king(state)
+
+    assert state.player.journal[-1].day == 30
+    assert "defeated by the demon king" in state.player.journal[-1].description.lower()
+
+
+def test_handle_demon_king_flee_does_not_record_a_journal_entry(monkeypatch, capsys):
+    state = make_state()
+
+    def fake_run_encounter(player, encounter, choose_action, rng=None):
+        return EncounterResult.FLED, ["stub log"]
+
+    monkeypatch.setattr(game.boss, "run_encounter", fake_run_encounter)
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_demon_king(state)
+
+    assert state.player.journal == []
+
+
 # --- _available_context_actions -----------------------------------------
 
 def test_available_context_actions_at_each_seeded_node():
@@ -377,6 +424,34 @@ def test_free_text_skills_atlas_quests_ask_around_dispatch_to_their_own_handlers
     game.handle_free_text(state)
     assert "heard anything worth repeating" in capsys.readouterr().out
 
+    feed_inputs(monkeypatch, ["journal"])  # nothing recorded yet -- returns immediately
+    game.handle_free_text(state)
+    assert "Nothing worth recording yet." in capsys.readouterr().out
+
+
+def test_handle_journal_prints_nothing_recorded_when_empty(capsys):
+    state = make_default_state()
+    game.handle_journal(state)
+    assert "Nothing worth recording yet." in capsys.readouterr().out
+
+
+def test_handle_journal_lists_entries_in_order(capsys):
+    from demonclock.journal import JournalEntry
+
+    state = make_default_state()
+    state.player.journal = [
+        JournalEntry(day=1, description="First visited Millhaven Market."),
+        JournalEntry(day=3, description="Defeated a Bramblewood Wolf."),
+    ]
+
+    game.handle_journal(state)
+
+    out = capsys.readouterr().out
+    assert "--- Your journal ---" in out
+    assert out.index("Day 1") < out.index("Day 3")
+    assert "First visited Millhaven Market." in out
+    assert "Defeated a Bramblewood Wolf." in out
+
 
 def test_free_text_unrecognized_with_no_registry_prints_the_honest_parser_message(monkeypatch, capsys):
     state = make_default_state()  # state.generation is None
@@ -449,3 +524,34 @@ def test_handle_atlas_shows_no_map_with_only_one_known_place(monkeypatch, capsys
     out = capsys.readouterr().out
     assert "--- Atlas (known places) ---" in out
     assert "\n\n--- Atlas" not in out  # no map block + blank line inserted above it
+
+
+# --- _report_ai_connectivity: startup self-test (llm/selftest.py) --------
+
+def test_report_ai_connectivity_prints_nothing_when_unconfigured(capsys):
+    config = GenerationConfig(roles={})
+    registry = LLMRegistry(config)
+
+    game._report_ai_connectivity(config, registry)
+
+    assert capsys.readouterr().out == ""
+
+
+def test_report_ai_connectivity_prints_online_on_a_successful_ping(capsys):
+    config = GenerationConfig(roles={"director": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={"mock": MockClient(responses=[{"ok": True}])})
+
+    game._report_ai_connectivity(config, registry)
+
+    assert "online" in capsys.readouterr().out.lower()
+
+
+def test_report_ai_connectivity_prints_a_clear_warning_when_configured_but_unreachable(capsys):
+    config = GenerationConfig(roles={"director": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={"mock": MockClient(always_error=RuntimeError("down"))})
+
+    game._report_ai_connectivity(config, registry)
+
+    out = capsys.readouterr().out
+    assert "unreachable" in out.lower()
+    assert "API key" in out

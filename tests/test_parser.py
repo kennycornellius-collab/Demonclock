@@ -12,6 +12,8 @@ def test_verb_aliases_map_to_same_action():
     assert parse("travel south").type is ActionType.MOVE
     assert parse("inv").type is ActionType.INVENTORY
     assert parse("sleep").type is ActionType.REST
+    assert parse("journal").type is ActionType.JOURNAL
+    assert parse("recap").type is ActionType.JOURNAL
 
 
 def test_bare_i_is_not_a_shorthand_for_inventory():
@@ -26,6 +28,27 @@ def test_look_with_no_target():
     action = parse("look")
     assert action.type is ActionType.LOOK
     assert action.target is None
+
+
+def test_look_check_l_alone_still_match_deterministically():
+    assert parse("look").type is ActionType.LOOK
+    assert parse("check").type is ActionType.LOOK
+    assert parse("l").type is ActionType.LOOK
+    assert parse("LOOK").type is ActionType.LOOK  # case-insensitive, same as every other verb
+
+
+def test_look_with_trailing_text_falls_through_to_unrecognized():
+    # Regression test: "look"/"check" have no redundant full-word alias
+    # like "i" had ("inv"/"inventory"), so instead of dropping them
+    # entirely, they now only match deterministically standing alone --
+    # actions._resolve_look never reads a target, so trailing text here is
+    # always either nothing lost (bare "look") or an ordinary sentence
+    # continuing past the verb ("Look, I really don't want to fight..."),
+    # never a real argument.
+    assert parse("look around").type is ActionType.UNRECOGNIZED
+    assert parse("look, i really don't want to fight").type is ActionType.UNRECOGNIZED
+    assert parse("check this out").type is ActionType.UNRECOGNIZED
+    assert parse("l around").type is ActionType.UNRECOGNIZED
 
 
 def test_case_insensitive():

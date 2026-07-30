@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS accepted_quests (
     data TEXT NOT NULL   -- JSON dict: flattened {"id": ..., **payload} (Step 6 Chunk B)
 );
 
+CREATE TABLE IF NOT EXISTS player_journal (
+    sort_order INTEGER NOT NULL,
+    data TEXT NOT NULL   -- JSON-encoded JournalEntry.to_dict() (journal.py, append-only)
+);
+
 CREATE TABLE IF NOT EXISTS node_flavor (
     node_id TEXT PRIMARY KEY,
     text TEXT NOT NULL   -- AI-generated ambient line (Step 7 Chunk C), plain text not JSON
@@ -159,6 +164,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
     conn.execute("DELETE FROM event_log")
     conn.execute("DELETE FROM content_pool")
     conn.execute("DELETE FROM accepted_quests")
+    conn.execute("DELETE FROM player_journal")
     conn.execute("DELETE FROM node_flavor")
     conn.execute("DELETE FROM npcs")
     conn.execute("DELETE FROM factions")
@@ -258,6 +264,11 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             "INSERT INTO accepted_quests (sort_order, data) VALUES (?, ?)",
             (sort_order, json.dumps(quest)),
         )
+    for sort_order, entry in enumerate(player.journal):
+        conn.execute(
+            "INSERT INTO player_journal (sort_order, data) VALUES (?, ?)",
+            (sort_order, json.dumps(entry.to_dict())),
+        )
     for node_id, text in world.node_flavor.items():
         conn.execute(
             "INSERT INTO node_flavor (node_id, text) VALUES (?, ?)",
@@ -303,6 +314,7 @@ def load_game(conn: sqlite3.Connection):
     from .clock import Clock
     from .events import ScheduledEvent
     from .history import LogEntry
+    from .journal import JournalEntry
     from .knowledge import NodeBelief
     from .models import NPC, Faction, InventoryItem, Link, Node, Player
     from .pool import GeneratedItem
@@ -358,6 +370,10 @@ def load_game(conn: sqlite3.Connection):
         json.loads(r[0])
         for r in conn.execute("SELECT data FROM accepted_quests ORDER BY sort_order")
     ]
+    journal = [
+        JournalEntry.from_dict(json.loads(r[0]))
+        for r in conn.execute("SELECT data FROM player_journal ORDER BY sort_order")
+    ]
 
     prow = conn.execute(
         "SELECT name, location_id, hp, hp_max, mana, mana_max, strength, magic, "
@@ -392,7 +408,7 @@ def load_game(conn: sqlite3.Connection):
         creative_mode_used=bool(prow[14]), behavior=behavior_profile,
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
         beliefs=beliefs, accepted_quests=accepted_quests, game_over=prow[25],
-        faction_standing=json.loads(prow[26]),
+        faction_standing=json.loads(prow[26]), journal=journal,
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

@@ -44,7 +44,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from . import behavior, setback
+from . import behavior, journal, setback
 from .models import Player
 from .skills import (
     BASIC_ATTACK,
@@ -572,10 +572,12 @@ def run_group_combat(
             f"You are defeated by {_enemies_desc(enemies)}! You come to, battered but "
             f"alive ({player.hp}/{player.hp_max} HP)."
         )
+        journal.record(player.journal, current_day, f"Defeated by {_enemies_desc(enemies)}.")
         log.extend(setback.capture_player(player, current_day))
         return CombatResult.DEFEAT, log
 
     log.append(f"You defeated {_enemies_desc(enemies)}!")
+    journal.record(player.journal, current_day, f"Defeated {_enemies_desc(enemies)}.")
     return CombatResult.VICTORY, log
 
 

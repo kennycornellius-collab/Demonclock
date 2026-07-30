@@ -203,6 +203,42 @@ def test_move_does_not_record_a_belief_of_the_origin_or_other_nodes():
     assert "wilds" not in state.player.beliefs
 
 
+def test_move_records_a_first_visit_journal_entry():
+    state = make_state()
+    resolve(parse("go east"), state)
+    assert len(state.player.journal) == 1
+    assert "first visited" in state.player.journal[0].description.lower()
+    assert "millhaven market" in state.player.journal[0].description.lower()
+
+
+def test_move_does_not_record_a_second_journal_entry_on_a_revisit():
+    state = make_state()
+    resolve(parse("go east"), state)  # village -> market: a genuine first visit
+    resolve(parse("go west"), state)  # market -> village: ALSO a first visit --
+    # make_state() builds Player directly (not via game.new_game, which is
+    # what actually seeds a belief of the starting node), so "village"
+    # itself has no belief yet either.
+    entries_after_two_first_visits = len(state.player.journal)
+
+    resolve(parse("go east"), state)  # village -> market again: no longer new
+
+    assert len(state.player.journal) == entries_after_two_first_visits
+
+
+def test_fast_travel_does_not_record_a_first_visit_journal_entry():
+    # Atlas already requires a destination to be a known belief before
+    # fast-travel is even attempted, so it can never be a genuine first
+    # visit -- only ordinary Move can trigger the journal entry.
+    state = make_state()
+    resolve(parse("go east"), state)  # village -> market, the one real first visit
+    state.player.location_id = "village"
+    entries_before = len(state.player.journal)
+
+    resolve_fast_travel(state, "market")
+
+    assert len(state.player.journal) == entries_before
+
+
 def test_look_records_a_belief_of_the_current_node():
     state = make_state()
     resolve(parse("look"), state)

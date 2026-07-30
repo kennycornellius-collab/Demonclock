@@ -14,13 +14,14 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import behavior, boss, combat, crafting, db, knowledge, mapview, pool, quests, rumors, setback, skills, trade
+from . import behavior, boss, combat, crafting, db, journal, knowledge, mapview, pool, quests, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
 from .generation.dialogue import run_dialogue_opening, run_dialogue_reply
 from .generation.free_text import run_free_text_fallback
 from .generation.narrator import narrate_combat_outcome, reword_rumor
+from .llm import selftest
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .models import NPC
@@ -35,7 +36,7 @@ from .state import GameState
 # are node-gated (see _available_context_actions) and NOT included here.
 _ALWAYS_AVAILABLE_ACTIONS = frozenset({
     ActionType.MOVE, ActionType.LOOK, ActionType.INVENTORY, ActionType.REST, ActionType.HELP,
-    ActionType.SKILLS, ActionType.ATLAS, ActionType.QUESTS, ActionType.ASK_AROUND,
+    ActionType.SKILLS, ActionType.ATLAS, ActionType.QUESTS, ActionType.ASK_AROUND, ActionType.JOURNAL,
 })
 
 MENU = """
@@ -49,7 +50,8 @@ MENU = """
 7) Atlas
 8) Ask around
 9) Quests
-10) Save & Quit
+10) Journal
+11) Save & Quit
 """
 
 # Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
@@ -394,8 +396,10 @@ def _handle_demon_king(state: GameState) -> None:
 
     if result is boss.EncounterResult.VICTORY:
         state.player.game_over = "victory"
+        journal.record(state.player.journal, state.clock.current_day, "Defeated the Demon King!")
     elif result is boss.EncounterResult.DEFEAT:
         state.player.game_over = "defeat"
+        journal.record(state.player.journal, state.clock.current_day, "Was defeated by the Demon King.")
     # FLED: nothing to record — the Demon King remains, cultists and all,
     # for a later attempt (boss.run_encounter never mutates the stored
     # Encounter, so the fight resets to its starting state every attempt).
@@ -485,6 +489,23 @@ def handle_ask_around(state: GameState) -> None:
         print(f"  ({rumor.confidence:.0%} sure) {text}")
 
 
+def handle_journal(state: GameState) -> None:
+    """Player-facing journal/recap (updates.md, surfaced 2026-07-29): the
+    player's own story so far (places first visited, fights won/lost,
+    quests completed, captures/escapes) — see journal.py for why this is a
+    separate, dedicated log rather than reusing world.event_log (which is
+    world-wide, feeds rumors, and is tightly coupled to events.EventKind's
+    scheduled-event vocabulary). Purely a chronological read — no input
+    prompt, unlike Atlas/Quests, since there's nothing here to act on."""
+    entries = state.player.journal
+    if not entries:
+        print("Nothing worth recording yet.")
+        return
+    print("--- Your journal ---")
+    for entry in entries:
+        print(f"  Day {entry.day}: {entry.description}")
+
+
 def handle_quests(state: GameState) -> None:
     """Step 6 Chunk B: the first real player-facing surface for content
     generation's output (SPEC.md §7 — items are "written to a content pool
@@ -545,7 +566,7 @@ def _offer_quest(state: GameState, item: pool.GeneratedItem) -> None:
 
 
 def handle_pay_ransom(state: GameState) -> None:
-    for line in setback.pay_ransom(state.player):
+    for line in setback.pay_ransom(state.player, state.clock.current_day):
         print(line)
 
 
@@ -749,6 +770,9 @@ def _dispatch_action(state: GameState, action: Action) -> None:
     if action.type is ActionType.ASK_AROUND:
         handle_ask_around(state)
         return
+    if action.type is ActionType.JOURNAL:
+        handle_journal(state)
+        return
 
     node = state.world.nodes[state.player.location_id]
 
@@ -820,6 +844,27 @@ def _resolve_talk_target(state: GameState, npcs: list[NPC], target: str | None) 
     return selected
 
 
+def _report_ai_connectivity(config: GenerationConfig, registry: LLMRegistry) -> None:
+    """Startup API-connectivity self-test (updates.md, surfaced
+    2026-07-28): one cheap ping (llm/selftest.py) so a configured-but-
+    unreachable key (the exact DEFAULT_MODEL 404 bug that motivated this)
+    gets a clear signal instead of every later generation call silently
+    no-op'ing with no indication anything was even configured. Purely
+    informational -- never blocks or fails startup either way, and prints
+    nothing at all when AI isn't configured (that's a perfectly normal,
+    expected state, not worth announcing every launch)."""
+    if not registry.enabled:
+        return
+    if selftest.check_connectivity(registry, config):
+        print("AI features are online.")
+    else:
+        print(
+            "AI features are configured but unreachable right now -- check your "
+            "API key/connection. The game will run without AI-generated content "
+            "until this is resolved."
+        )
+
+
 def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
     conn = db.connect(save_path)
     db.init_schema(conn)
@@ -828,7 +873,9 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
     # gitignored .env file in the cwd -- see .env.example. Builds a disabled,
     # empty-role registry when neither is set; sim._run_batch then no-ops,
     # exactly like before Step 5 existed. Never fails startup for a missing key.
-    registry = LLMRegistry(GenerationConfig.from_env())
+    generation_config = GenerationConfig.from_env()
+    registry = LLMRegistry(generation_config)
+    _report_ai_connectivity(generation_config, registry)
 
     loaded = db.load_game(conn)
     if loaded is not None:
@@ -851,6 +898,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         "7": handle_atlas,
         "8": handle_ask_around,
         "9": handle_quests,
+        "10": handle_journal,
     }
     captured_handlers = {
         "1": handle_pay_ransom,
@@ -885,7 +933,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
             print(MENU.format(node_name=node.name, day=state.clock.current_day))
             choice = input("> ").strip()
 
-            if choice == "10":
+            if choice == "11":
                 db.save_game(conn, state.world, state.player, state.clock)
                 print("Saved. Farewell.")
                 break

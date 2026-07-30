@@ -388,6 +388,42 @@ def test_accepted_quests_default_to_empty_for_a_fresh_player(tmp_path):
     conn.close()
 
 
+def test_player_journal_round_trips_in_order(tmp_path):
+    from demonclock.journal import JournalEntry
+
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    player.journal = [
+        JournalEntry(day=1, description="First visited Millhaven Market."),
+        JournalEntry(day=3, description="Defeated a Bramblewood Wolf."),
+    ]
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.journal == player.journal
+
+    conn.close()
+
+
+def test_player_journal_defaults_to_empty_for_a_fresh_player(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.journal == []
+
+    conn.close()
+
+
 def test_save_is_a_full_overwrite_not_an_accumulation(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

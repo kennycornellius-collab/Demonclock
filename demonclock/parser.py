@@ -48,6 +48,10 @@ class ActionType(str, Enum):
     ATLAS = "atlas"
     QUESTS = "quests"
     ASK_AROUND = "ask_around"
+    # Player-facing journal/recap (updates.md, surfaced 2026-07-29) — same
+    # "menu-only until free text catches up" precedent as every other
+    # Chunk A verb above.
+    JOURNAL = "journal"
     UNRECOGNIZED = "unrecognized"
 
 
@@ -100,7 +104,25 @@ VERB_TABLE: dict[str, ActionType] = {
     "quest": ActionType.QUESTS,
     "rumors": ActionType.ASK_AROUND,
     "gossip": ActionType.ASK_AROUND,
+    "journal": ActionType.JOURNAL,
+    "recap": ActionType.JOURNAL,
 }
+
+# "look"/"l"/"check" (updates.md's "Open bugs": a smaller version of the
+# "i"/Inventory collision) -- actions._resolve_look never reads a target at
+# all, so unlike "go"/"talk" (which genuinely need trailing words), any text
+# after one of these is either nothing (bare "look") or an ordinary
+# sentence's discourse continuation ("Look, I really don't want to
+# fight..."), never a real argument that would be lost by NOT matching.
+# Unlike "i", there's no redundant full-word alias to simply drop (the
+# module docstring's own reasoning for why they stayed as bare verbs despite
+# not fully "passing the bar" other Chunk A verbs did) -- so instead, these
+# three only match deterministically when they're the WHOLE input; any
+# trailing word makes `parse` fall through to UNRECOGNIZED (and so to the
+# free-text LLM fallback, if configured) exactly like any other novel
+# phrasing, rather than the first word silently winning and the rest being
+# discarded.
+_EXACT_MATCH_ONLY = {"look", "l", "check"}
 
 
 def parse(text: str) -> Action:
@@ -111,6 +133,8 @@ def parse(text: str) -> Action:
     words = raw.lower().split()
     verb = words[0]
     action_type = VERB_TABLE.get(verb)
+    if verb in _EXACT_MATCH_ONLY and len(words) > 1:
+        action_type = None
 
     if action_type is None:
         # Step 12 Chunk C (game.handle_free_text): tries the LLM parser
@@ -125,7 +149,7 @@ def parse(text: str) -> Action:
             raw_text=raw,
             message=(
                 f"I don't understand {verb!r}. Try: go <direction>, look, inventory, rest, "
-                "fight, trade, talk, craft, skills, atlas, quests, rumors, help."
+                "fight, trade, talk, craft, skills, atlas, quests, rumors, journal, help."
             ),
         )
 

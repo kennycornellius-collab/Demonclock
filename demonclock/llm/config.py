@@ -53,6 +53,24 @@ PROVIDER_API_KEY_ENV = {"gemini": "GEMINI_API_KEY"}
 CONFIG_FILE_ENV_VAR = "DEMONCLOCK_LLM_CONFIG"
 DEFAULT_DOTENV_PATH = ".env"
 
+# 2026-07-29: the plain single-entry `gemini.DEFAULT_MODEL` chain was hitting
+# real rate limits during play -- "gemini-flash-latest"'s free tier is only
+# 5 RPM / 20 RPD, and a single elapsed-time batch (Director + 2x Story +
+# 2x Quest + optional Places/NPC + Flavor) can fire up to ~8 calls back to
+# back. Live-tested (real API calls against the user's own key, not just
+# docs) alternatives that also correctly honor systemInstruction +
+# responseMimeType/responseSchema: "gemini-3.5-flash-lite" and
+# "gemini-3.1-flash-lite" (15 RPM / 500 RPD / 250K TPM each), and
+# "gemma-4-26b-a4b-it" (30 RPM / 14.4K RPD but a much tighter 16K TPM, plus
+# hidden "thinking" tokens that eat into it) as a last-resort third tier.
+# This is every role's DEFAULT chain -- still fully overridable per role via
+# DEMONCLOCK_LLM_CONFIG with no code change.
+DEFAULT_GEMINI_MODEL_CHAIN = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemma-4-26b-a4b-it",
+)
+
 
 @dataclass(frozen=True)
 class ProviderSpec:
@@ -99,7 +117,13 @@ class GenerationConfig:
         if config_path:
             roles = _load_roles_from_file(config_path)
         elif "gemini" in api_keys:
-            roles = {role: [ProviderSpec(provider="gemini")] for role in ROLES}
+            roles = {
+                role: [
+                    ProviderSpec(provider="gemini", model=model)
+                    for model in DEFAULT_GEMINI_MODEL_CHAIN
+                ]
+                for role in ROLES
+            }
         else:
             roles = {}
 

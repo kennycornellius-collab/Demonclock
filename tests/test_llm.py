@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from demonclock.llm.config import GenerationConfig, ProviderSpec
+from demonclock.llm.config import DEFAULT_GEMINI_MODEL_CHAIN, GenerationConfig, ProviderSpec
 from demonclock.llm.errors import LLMProviderError, MalformedGenerationError
 from demonclock.llm.providers.gemini import GeminiClient
 from demonclock.llm.providers.mock import MockClient
@@ -195,13 +195,14 @@ def test_from_env_is_disabled_with_no_key_and_no_config_file():
     assert config.roles == {}
 
 
-def test_from_env_routes_every_role_to_gemini_when_the_key_is_set():
+def test_from_env_routes_every_role_to_the_default_gemini_model_chain_when_the_key_is_set():
     with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
         config = GenerationConfig.from_env(dotenv_path=None)
     assert config.enabled
     assert config.api_keys["gemini"] == "test-key"
+    expected = [ProviderSpec(provider="gemini", model=m) for m in DEFAULT_GEMINI_MODEL_CHAIN]
     for role in ("director", "story", "quest", "places", "entity_resolution"):
-        assert config.roles[role] == [ProviderSpec(provider="gemini")]
+        assert config.roles[role] == expected
 
 
 def test_from_env_config_file_overrides_the_default_routing(tmp_path):

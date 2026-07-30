@@ -132,13 +132,13 @@ def test_node_prices_round_trip(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)
 
-    world = new_default_world()  # market is seeded with {"grain": 10}
+    world = new_default_world()  # market is seeded with grain/wool/iron_ore prices
     player = new_player(name="Astra", location_id="village")
     db.save_game(conn, world, player, Clock())
 
     loaded_world, _, _ = db.load_game(conn)
 
-    assert loaded_world.nodes["market"].prices == {"grain": 10}
+    assert loaded_world.nodes["market"].prices == {"grain": 10, "wool": 8, "iron_ore": 15}
     assert loaded_world.nodes["village"].prices == {}  # untouched nodes stay empty
 
     conn.close()

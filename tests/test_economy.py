@@ -18,6 +18,22 @@ def make_state(world: World) -> GameState:
     return GameState(world=world, player=player, clock=Clock())
 
 
+# -- economy depth: wool/iron_ore -------------------------------------------
+
+def test_base_price_tracks_wool_and_iron_ore_alongside_grain():
+    assert BASE_PRICE == {"grain": 10, "wool": 8, "iron_ore": 15}
+
+
+def test_wool_converges_toward_its_own_base_price_the_same_way_grain_does():
+    world = make_world("a")
+    world.nodes["a"].prices = {"wool": BASE_PRICE["wool"]}
+    state = make_state(world)
+
+    apply_price_shift(state)
+
+    assert world.nodes["a"].prices["wool"] == BASE_PRICE["wool"]  # holds steady while safe
+
+
 def test_price_holds_steady_while_safe():
     world = make_world("a", "b")
     world.add_link("a", "b", "north", travel_days=1)

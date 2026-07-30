@@ -31,3 +31,14 @@ def remove_item(player: Player, item_id: str, quantity: int = 1) -> bool:
                 player.inventory.remove(item)
             return True
     return False
+
+
+def display_name(item_id: str) -> str:
+    """The fallback display name trade.py/crafting.py/economy.py/game.py all
+    derive for a good/item id that has no explicit name of its own (unlike
+    e.g. a Skill or NPC, which always carry a real `name` field). Plain
+    `item_id.title()` mishandles a multi-word snake_case id -- surfaced by
+    "economy depth" (updates.md) adding "iron_ore", where `.title()` alone
+    produces "Iron_Ore" (Python's `str.title()` doesn't treat `_` as a word
+    boundary) -- so the underscore is replaced with a space first."""
+    return item_id.replace("_", " ").title()

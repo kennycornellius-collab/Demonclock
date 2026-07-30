@@ -25,7 +25,7 @@ from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .models import NPC
 from .parser import Action, ActionType, parse
-from .player import new_player
+from .player import display_name, new_player
 from .resolve import resolve_entity
 from .seed import WILD_ENEMY_BY_NODE, new_default_world
 from .state import GameState
@@ -188,7 +188,7 @@ def _handle_trade(state: GameState, node) -> None:
         owned = next(
             (item.quantity for item in state.player.inventory if item.item_id == good_id), 0
         )
-        print(f"  {i}) {good_id.title()} — {price} gold each (you have {owned})")
+        print(f"  {i}) {display_name(good_id)} — {price} gold each (you have {owned})")
 
     choice = input(f"Gold: {state.player.gold}\n1) Buy  2) Sell  3) Leave\n> ").strip()
     if choice not in ("1", "2"):
@@ -258,7 +258,7 @@ def _handle_craft(state: GameState, node) -> None:
     recipes = list(crafting.RECIPES.values())
     for i, recipe in enumerate(recipes, start=1):
         inputs_desc = ", ".join(
-            f"{amount} {item_id.title()}" for item_id, amount in recipe.inputs.items()
+            f"{amount} {display_name(item_id)}" for item_id, amount in recipe.inputs.items()
         )
         print(f"  {i}) {recipe.name} — needs {inputs_desc} -> {recipe.output_quantity} {recipe.output_name}")
 

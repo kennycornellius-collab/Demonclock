@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import behavior
-from .player import add_item, remove_item
+from .player import add_item, display_name, remove_item
 from .state import GameState
 
 
@@ -37,6 +37,19 @@ RECIPES: dict[str, Recipe] = {
         id="bake_bread", name="Bake Bread",
         inputs={"grain": 3}, output_item_id="bread", output_name="Bread", output_quantity=1,
     ),
+    # "Economy depth" follow-up (updates.md, surfaced 2026-07-29): wool/
+    # iron_ore are also tracked goods now (economy.BASE_PRICE, seed.py's
+    # market) -- these two recipes give trading and crafting a second
+    # connected loop, same "buy the raw good, craft it at the village
+    # workshop" shape bake_bread <- grain already established.
+    "spin_cloth": Recipe(
+        id="spin_cloth", name="Spin Cloth",
+        inputs={"wool": 2}, output_item_id="cloth", output_name="Cloth", output_quantity=1,
+    ),
+    "smelt_iron": Recipe(
+        id="smelt_iron", name="Smelt Iron",
+        inputs={"iron_ore": 3}, output_item_id="iron_ingot", output_name="Iron Ingot", output_quantity=1,
+    ),
 }
 
 
@@ -54,7 +67,7 @@ def craft(state: GameState, recipe_id: str) -> list[str]:
         return ["There's no recipe like that."]
 
     if not _has_enough(state, recipe.inputs):
-        missing = ", ".join(f"{amount} {item_id.title()}" for item_id, amount in recipe.inputs.items())
+        missing = ", ".join(f"{amount} {display_name(item_id)}" for item_id, amount in recipe.inputs.items())
         return [f"You need: {missing}."]
 
     player = state.player

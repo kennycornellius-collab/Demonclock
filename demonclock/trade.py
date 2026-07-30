@@ -20,7 +20,7 @@ same status as every other tuning constant in this codebase.
 from __future__ import annotations
 
 from . import behavior
-from .player import add_item, remove_item
+from .player import add_item, display_name, remove_item
 from .state import GameState
 
 TRADE_IMPACT_PER_UNIT = 1
@@ -39,7 +39,7 @@ def buy(state: GameState, node_id: str, good_id: str, quantity: int) -> list[str
         return ["Quantity must be at least 1."]
     node = state.world.nodes[node_id]
     if good_id not in node.prices:
-        return [f"{good_id.title()} isn't traded here."]
+        return [f"{display_name(good_id)} isn't traded here."]
 
     price = node.prices[good_id]
     total_cost = price * quantity
@@ -48,10 +48,10 @@ def buy(state: GameState, node_id: str, good_id: str, quantity: int) -> list[str
         return [f"That costs {total_cost} gold; you only have {player.gold}."]
 
     player.gold -= total_cost
-    add_item(player, good_id, good_id.title(), quantity)
+    add_item(player, good_id, display_name(good_id), quantity)
     node.prices[good_id] = price + _impact(quantity)
     behavior.record_trade_action(player.behavior)
-    return [f"You buy {quantity} {good_id.title()} for {total_cost} gold."]
+    return [f"You buy {quantity} {display_name(good_id)} for {total_cost} gold."]
 
 
 def sell(state: GameState, node_id: str, good_id: str, quantity: int) -> list[str]:
@@ -61,15 +61,15 @@ def sell(state: GameState, node_id: str, good_id: str, quantity: int) -> list[st
         return ["Quantity must be at least 1."]
     node = state.world.nodes[node_id]
     if good_id not in node.prices:
-        return [f"{good_id.title()} isn't traded here."]
+        return [f"{display_name(good_id)} isn't traded here."]
 
     player = state.player
     if not remove_item(player, good_id, quantity):
-        return [f"You don't have {quantity} {good_id.title()} to sell."]
+        return [f"You don't have {quantity} {display_name(good_id)} to sell."]
 
     price = node.prices[good_id]
     total_gain = price * quantity
     player.gold += total_gain
     node.prices[good_id] = max(price - _impact(quantity), MIN_PRICE)
     behavior.record_trade_action(player.behavior)
-    return [f"You sell {quantity} {good_id.title()} for {total_gain} gold."]
+    return [f"You sell {quantity} {display_name(good_id)} for {total_gain} gold."]

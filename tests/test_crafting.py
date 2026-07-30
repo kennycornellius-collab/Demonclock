@@ -92,3 +92,41 @@ def test_craft_does_not_record_a_behavior_action_on_failure():
     craft(state, "bake_bread")
 
     assert state.player.behavior.crafting_actions == 0.0
+
+
+# -- economy depth: wool/iron_ore recipes ------------------------------------
+
+def test_spin_cloth_recipe_exists_and_needs_two_wool():
+    recipe = RECIPES["spin_cloth"]
+    assert recipe.inputs == {"wool": 2}
+    assert recipe.output_item_id == "cloth"
+    assert recipe.output_quantity == 1
+
+
+def test_smelt_iron_recipe_exists_and_needs_three_iron_ore():
+    recipe = RECIPES["smelt_iron"]
+    assert recipe.inputs == {"iron_ore": 3}
+    assert recipe.output_item_id == "iron_ingot"
+    assert recipe.output_quantity == 1
+
+
+def test_craft_spin_cloth_consumes_wool_and_adds_cloth():
+    state = make_state()
+    add_item(state.player, "wool", "Wool", 2)
+
+    craft(state, "spin_cloth")
+
+    assert not any(i.item_id == "wool" for i in state.player.inventory)
+    cloth = next(i for i in state.player.inventory if i.item_id == "cloth")
+    assert cloth.quantity == 1
+
+
+def test_craft_smelt_iron_consumes_iron_ore_and_adds_iron_ingot():
+    state = make_state()
+    add_item(state.player, "iron_ore", "Iron Ore", 3)
+
+    craft(state, "smelt_iron")
+
+    assert not any(i.item_id == "iron_ore" for i in state.player.inventory)
+    ingot = next(i for i in state.player.inventory if i.item_id == "iron_ingot")
+    assert ingot.quantity == 1

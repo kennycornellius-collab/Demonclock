@@ -28,10 +28,15 @@ def new_default_world() -> World:
     # WILD_ENEMY_BY_NODE gates Fight — Hana the Miller's grain mill (see
     # the NPC seeded below) makes village the natural home for Bake Bread.
     world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub", "workshop"]))
-    # Seeded with a tracked grain price (SPEC.md §12 step 2, Stage 3: price
-    # shifts) — the only trade-hub node with tracked prices this stage,
-    # keeping the demo to "one good at one node" (economy.BASE_PRICE).
-    world.add_node(Node(id="market", name="Millhaven Market", type="market", tags=["trade-hub"], prices={"grain": 10}))
+    # Seeded with tracked prices (SPEC.md §12 step 2, Stage 3: price shifts)
+    # — the only trade-hub node with tracked prices this stage. Wool/iron_ore
+    # (added alongside grain as the "economy depth" follow-up, updates.md)
+    # feed crafting.RECIPES' spin_cloth/smelt_iron the same way grain feeds
+    # bake_bread — buy the raw good here, craft it at the village workshop.
+    world.add_node(Node(
+        id="market", name="Millhaven Market", type="market", tags=["trade-hub"],
+        prices={"grain": 10, "wool": 8, "iron_ore": 15},
+    ))
     world.add_node(Node(id="road", name="Old North Road", type="road"))
     # Starts "occupied" — it borders demon-king territory (SPEC.md §12 step 2,
     # Stage 2: invasion-as-graph-spread). No bootstrap event needed for this;

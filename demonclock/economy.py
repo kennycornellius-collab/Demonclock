@@ -15,10 +15,17 @@ signal.
 """
 from __future__ import annotations
 
+from .player import display_name
 from .state import GameState
 from .world import World
 
-BASE_PRICE: dict[str, int] = {"grain": 10}
+# "Economy depth" follow-up (updates.md, surfaced 2026-07-29): grain was the
+# only good ever seeded/tracked anywhere, even though this whole module was
+# always general enough to handle an arbitrary number of them. Pure content,
+# no engine change -- wool/iron_ore are also crafting.RECIPES inputs now
+# (spin_cloth/smelt_iron), so trading and crafting connect a second way,
+# same shape bake_bread <- grain already established.
+BASE_PRICE: dict[str, int] = {"grain": 10, "wool": 8, "iron_ore": 15}
 
 # The target price for any good with no explicit BASE_PRICE entry above —
 # same "start rough, calibrate by feel" status as PRICE_STEP. Deliberate
@@ -81,5 +88,5 @@ def apply_price_shift(state: GameState) -> list[str]:
                 continue
             node.prices[good_id] = new_price
             direction = "rise" if new_price > current else "fall"
-            log.append(f"{good_id.title()} prices {direction} to {new_price} gold at {node.name}.")
+            log.append(f"{display_name(good_id)} prices {direction} to {new_price} gold at {node.name}.")
     return log

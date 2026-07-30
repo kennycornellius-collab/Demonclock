@@ -16,6 +16,7 @@ from demonclock.clock import Clock
 from demonclock.combat import BASIC_ATTACK, Combatant, CombatResult
 from demonclock.boss import EncounterResult
 from demonclock.generation.free_text import ParsedAction
+from demonclock.knowledge import observe_node
 from demonclock.llm.config import GenerationConfig, ProviderSpec
 from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
@@ -421,3 +422,30 @@ def test_free_text_ai_fallback_result_is_still_gated_by_real_availability(monkey
     game.handle_free_text(state)
 
     assert "nothing to fight here" in capsys.readouterr().out
+
+
+# --- handle_atlas: ASCII map wiring (mapview.py) --------------------------
+
+def test_handle_atlas_prints_the_ascii_map_above_the_list_once_two_places_are_known(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    observe_node(state.player.beliefs, state.world.nodes["village"], 0)
+    observe_node(state.player.beliefs, state.world.nodes["market"], 0)
+    feed_inputs(monkeypatch, [""])  # cancel fast-travel
+
+    game.handle_atlas(state)
+
+    out = capsys.readouterr().out
+    assert out.index("--") < out.index("--- Atlas (known places) ---")  # map prints above the list
+    assert "Millhaven Market" in out
+
+
+def test_handle_atlas_shows_no_map_with_only_one_known_place(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    observe_node(state.player.beliefs, state.world.nodes["village"], 0)
+    feed_inputs(monkeypatch, [""])  # cancel fast-travel
+
+    game.handle_atlas(state)
+
+    out = capsys.readouterr().out
+    assert "--- Atlas (known places) ---" in out
+    assert "\n\n--- Atlas" not in out  # no map block + blank line inserted above it

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import behavior, boss, combat, crafting, db, knowledge, pool, quests, rumors, setback, skills, trade
+from . import behavior, boss, combat, crafting, db, knowledge, mapview, pool, quests, rumors, setback, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -413,13 +413,24 @@ def handle_atlas(state: GameState) -> None:
     """Discovered-places view + the fast-travel trigger (SPEC.md §3/§10):
     lists what the player BELIEVES about each known node — last-seen state
     and day, not live world truth — then offers to walk a full route there
-    in one time-costed jump."""
+    in one time-costed jump. An ASCII adjacency map (mapview.py, "text/
+    ASCII map for Atlas" follow-up, updates.md, surfaced 2026-07-29) prints
+    above the list when at least 2 known places can be laid out on a
+    compass grid — the numbers on the map match this list's own numbering,
+    so a place found on the map can be fast-traveled to by typing the same
+    number below."""
     beliefs = state.player.beliefs
     if not beliefs:
         print("You don't know of anywhere yet.")
         return
 
     entries = sorted(beliefs.items(), key=lambda kv: state.world.nodes[kv[0]].name)
+    labels = {node_id: str(i) for i, (node_id, _) in enumerate(entries, start=1)}
+    ascii_map = mapview.render(state, labels)
+    if ascii_map is not None:
+        print(ascii_map)
+        print()
+
     print("--- Atlas (known places) ---")
     for i, (node_id, belief) in enumerate(entries, start=1):
         name = state.world.nodes[node_id].name

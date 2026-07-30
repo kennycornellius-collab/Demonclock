@@ -868,6 +868,24 @@ def test_flavor_system_prompt_mentions_derived_role_hint():
     assert "derived_role_hint" in FLAVOR_SYSTEM_PROMPT
 
 
+# -- Quest prompt documents each RequirementKind's target shape ------------
+# Regression coverage for the fix noted in updates.md's "Open TODOs": Gemini
+# kept emitting malformed requirement targets (e.g. NODE_STATE with no
+# node_id) because the prompt only ever named the legal `kind` values, never
+# each kind's required `target` keys.
+
+def test_quest_system_prompt_documents_every_requirement_kinds_target_shape():
+    for kind in RequirementKind:
+        assert kind.value in QUEST_SYSTEM_PROMPT
+
+    # Spot-check a couple of the actual key names, not just the kind names,
+    # so this can't pass by accident just because _REQUIREMENT_KINDS already
+    # lists every kind.value elsewhere in the prompt.
+    assert "node_id" in QUEST_SYSTEM_PROMPT
+    assert "faction_id" in QUEST_SYSTEM_PROMPT
+    assert "tier" in QUEST_SYSTEM_PROMPT
+
+
 def test_run_flavor_includes_the_player_role_hint_in_its_payload():
     state = make_state()
     state.player.behavior.trade_actions = 10.0

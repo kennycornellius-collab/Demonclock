@@ -20,6 +20,39 @@ if TYPE_CHECKING:
 
 _REQUIREMENT_KINDS = ", ".join(kind.value for kind in RequirementKind)
 
+# Root-cause fix for a real, live, repeatable bug (see updates.md's "Open
+# TODOs"): the prompt used to name only the legal `kind` values, never each
+# kind's expected `target` KEYS -- `target`'s own JSON schema is just
+# `{"type": "object"}` (the hand-rolled validator can't express "these keys
+# are required, conditional on kind"), so nothing structurally stopped the
+# model from emitting e.g. a NODE_STATE requirement with no `node_id`.
+# canon.py's `_check_one` degrades that gracefully now (a malformed target is
+# just a failed requirement, not a crash), but a malformed requirement still
+# means the quest never survives commit/pull -- fewer usable quests than
+# intended. Each shape below must mirror `canon._check_one`'s own
+# `req.target.get(...)` calls exactly; kept as a plain dict (not derived by
+# reflection) since it's prompt text, not executable validation -- the
+# assertion below only guards against a NEW RequirementKind being added here
+# without also documenting its shape.
+_REQUIREMENT_TARGET_SHAPES: dict[RequirementKind, str] = {
+    RequirementKind.NODE_STATE: '{"node_id": <node id>, "state": <expected node state string>}',
+    RequirementKind.LINK_STATUS: '{"from_id": <node id>, "to_id": <node id>, "status": <expected link status string>}',
+    RequirementKind.PLAYER_HAS_ITEM: '{"item_id": <item id>, "expected": <true if the player must have it, false if they must NOT>}',
+    RequirementKind.PLAYER_HAS_SKILL: '{"skill_id": <skill id>, "expected": <true if the player must know it, false if they must NOT>}',
+    RequirementKind.PLAYER_GOLD_AT_LEAST: '{"amount": <minimum gold, a number>}',
+    RequirementKind.PLAYER_NOT_CAPTURED: '{} (no target keys needed)',
+    RequirementKind.PLAYER_HAS_ITEM_QUANTITY_AT_LEAST: '{"item_id": <item id>, "amount": <minimum quantity, a number>}',
+    RequirementKind.FACTION_STANDING_AT_LEAST: '{"faction_id": <faction id>, "tier": one of "hostile"|"unfriendly"|"neutral"|"friendly"|"allied"}',
+}
+assert set(_REQUIREMENT_TARGET_SHAPES) == set(RequirementKind), (
+    "a RequirementKind was added/removed in canon.py without updating "
+    "_REQUIREMENT_TARGET_SHAPES to match -- the Quest prompt would silently "
+    "go back to not documenting that kind's target shape"
+)
+_REQUIREMENT_TARGET_SHAPES_TEXT = "; ".join(
+    f"{kind.value} needs target {shape}" for kind, shape in _REQUIREMENT_TARGET_SHAPES.items()
+)
+
 SYSTEM_PROMPT = (
     "You are the Quest agent for a text RPG's content-generation batch. "
     "Given a situation, turn it into ONE concrete quest: a title, a "
@@ -28,6 +61,9 @@ SYSTEM_PROMPT = (
     "requirements (never prose) that must still hold for this quest to make "
     f"sense whenever a player eventually draws it. "
     f"Every requirement's `kind` MUST be one of: {_REQUIREMENT_KINDS}. "
+    f"Each kind's `target` object MUST include exactly the keys it needs -- "
+    f"a requirement with a missing or empty target key is treated as "
+    f"malformed and discarded: {_REQUIREMENT_TARGET_SHAPES_TEXT}. "
     "The completion manifest is the same shape but describes the actual "
     "objective the player must achieve to turn the quest in -- e.g. "
     "PLAYER_HAS_ITEM_QUANTITY_AT_LEAST for 'bring me N of something', or "

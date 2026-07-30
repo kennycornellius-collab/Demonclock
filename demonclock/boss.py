@@ -33,6 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from . import behavior
 from .combat import BASIC_ATTACK, Combatant, apply_skill, choose_enemy_skill, effective_stat, tick_upkeep, usable_skills
 from .models import Player
 from .skills import (
@@ -244,6 +245,7 @@ def run_encounter(
                     log.append(f"You flee from {encounter.name}.")
                     return EncounterResult.FLED, log
                 skill, target = choice
+                behavior.record_combat_action(player.behavior)
                 if skill is not BASIC_ATTACK:
                     magnitude = compute_magnitude(
                         skill.base_damage, skill.attribute_multiplier, effective_stat(fighter, skill.attribute_type)

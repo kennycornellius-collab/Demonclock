@@ -362,6 +362,37 @@ def test_basic_attack_never_sets_creative_mode_used_in_a_boss_fight():
     assert player.creative_mode_used is False
 
 
+# --- behavior-profile tracking -------------------------------------------------
+
+def test_run_encounter_records_a_combat_action_per_player_cast():
+    # Regression test: run_encounter's fighter-turn branch never called
+    # behavior.record_combat_action at all, so fighting a boss contributed
+    # nothing to the player's derived combat-role signal, unlike every
+    # ordinary wild-enemy fight via combat.run_group_combat -- mirrors
+    # test_combat.py's own test_run_combat_records_a_combat_action_per_player_cast.
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=5, hp_max=5, defense=0)
+    encounter = Encounter(id="e", name="Weakling", boss=boss, phases=[phase])
+    player = make_player()
+
+    result, log = run_encounter(player, encounter, choose_action=attack_boss)
+
+    assert result is EncounterResult.VICTORY
+    assert player.behavior.combat_actions == 1.0  # one-shots on the player's single turn
+
+
+def test_run_encounter_fleeing_does_not_record_a_combat_action():
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=500, hp_max=500, strength=1)
+    encounter = Encounter(id="e", name="Unbeatable", boss=boss, phases=[phase])
+    player = make_player(hp=500, hp_max=500)
+
+    result, log = run_encounter(player, encounter, choose_action=lambda *_: None)
+
+    assert result is EncounterResult.FLED
+    assert player.behavior.combat_actions == 0.0
+
+
 # --- the real demon-king encounter (Chunk B) --------------------------------
 
 def test_demon_king_encounter_is_well_formed():

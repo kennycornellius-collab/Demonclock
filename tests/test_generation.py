@@ -17,7 +17,7 @@ from demonclock.generation.story import SITUATION_SCHEMA, SYSTEM_PROMPT as STORY
 from demonclock.llm.config import GenerationConfig, ProviderSpec
 from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
-from demonclock.models import NPC, Node
+from demonclock.models import NPC, Faction, Node
 from demonclock.pool import GeneratedItem
 from demonclock.player import new_player
 from demonclock.state import GameState
@@ -220,6 +220,25 @@ def test_batch_context_reflects_derived_role_hint():
     state.player.behavior.combat_actions = 10.0
     context = build_batch_context(state)
     assert "combat-focused" in context["player"]["derived_role_hint"]
+
+
+def test_batch_context_includes_known_factions():
+    # Step 10 Stage 4 follow-up: without this, the Quest agent had no
+    # legitimate faction id to ever reference for FACTION_STANDING_AT_LEAST
+    # or faction_standing_delta other than hallucinating one.
+    state = make_state()
+    state.world.add_faction(Faction(id="merchants", name="The Merchants' Guild"))
+    context = build_batch_context(state)
+
+    assert context["known_factions"] == [
+        {"id": "merchants", "name": "The Merchants' Guild", "description": ""}
+    ]
+
+
+def test_batch_context_known_factions_is_empty_when_none_are_seeded():
+    state = make_state()
+    context = build_batch_context(state)
+    assert context["known_factions"] == []
 
 
 # -- Director agent ----------------------------------------------------
@@ -873,6 +892,16 @@ def test_flavor_system_prompt_mentions_derived_role_hint():
 # kept emitting malformed requirement targets (e.g. NODE_STATE with no
 # node_id) because the prompt only ever named the legal `kind` values, never
 # each kind's required `target` keys.
+
+def test_quest_system_prompt_mentions_faction_standing_delta():
+    assert "faction_standing_delta" in QUEST_SYSTEM_PROMPT
+    assert "known_factions" in QUEST_SYSTEM_PROMPT
+
+
+def test_quest_schema_declares_faction_standing_delta_as_optional():
+    assert "faction_standing_delta" not in QUEST_SCHEMA["required"]
+    assert QUEST_SCHEMA["properties"]["faction_standing_delta"]["properties"]["tiers"] == {"type": "integer"}
+
 
 def test_quest_system_prompt_documents_every_requirement_kinds_target_shape():
     for kind in RequirementKind:

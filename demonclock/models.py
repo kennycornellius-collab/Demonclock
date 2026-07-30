@@ -129,5 +129,6 @@ class Player:
     # Step 10 Stage 4 (SPEC §8): faction_id -> one of factions.STANDING_TIERS.
     # An absent entry means "neutral" (factions.standing_of's default) --
     # this dict only ever holds a faction once something has actually moved
-    # standing off that default (no live trigger exists yet this stage).
+    # standing off that default (quest turn-in, via factions.adjust_standing --
+    # a 2026-07-30 follow-up).
     faction_standing: dict[str, str] = field(default_factory=dict)

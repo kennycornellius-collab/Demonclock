@@ -1,4 +1,4 @@
-from demonclock.factions import DEFAULT_STANDING, STANDING_TIERS, meets_standing, standing_of
+from demonclock.factions import DEFAULT_STANDING, STANDING_TIERS, adjust_standing, meets_standing, standing_of
 from demonclock.player import new_player
 
 
@@ -39,3 +39,30 @@ def test_meets_standing_uses_the_default_neutral_for_an_unrecorded_faction():
     player = new_player(name="Hero", location_id="village")
     assert meets_standing(player, "raiders", "neutral")
     assert not meets_standing(player, "raiders", "friendly")
+
+
+# -- adjust_standing (Step 10 Stage 4 follow-up: the first live trigger) ---
+
+def test_adjust_standing_moves_up_from_the_default_neutral():
+    player = new_player(name="Hero", location_id="village")
+    new_tier = adjust_standing(player, "merchants", 1)
+    assert new_tier == "friendly"
+    assert player.faction_standing["merchants"] == "friendly"
+
+
+def test_adjust_standing_moves_down_from_a_recorded_tier():
+    player = new_player(name="Hero", location_id="village")
+    player.faction_standing["merchants"] = "friendly"
+    assert adjust_standing(player, "merchants", -1) == "neutral"
+
+
+def test_adjust_standing_clamps_at_the_top_of_the_scale():
+    player = new_player(name="Hero", location_id="village")
+    player.faction_standing["merchants"] = "allied"
+    assert adjust_standing(player, "merchants", 5) == "allied"
+
+
+def test_adjust_standing_clamps_at_the_bottom_of_the_scale():
+    player = new_player(name="Hero", location_id="village")
+    player.faction_standing["merchants"] = "hostile"
+    assert adjust_standing(player, "merchants", -5) == "hostile"

@@ -85,13 +85,23 @@ SYSTEM_PROMPT = (
     "a named guard captain), set needs_new_npc to true and npc_hint to a "
     "short plain-language description -- do NOT invent that NPC's id "
     "yourself; a separate agent will name and place them. Leave "
-    "needs_new_npc false for an ordinary quest involving no new NPC. The "
+    "needs_new_npc false for an ordinary quest involving no new NPC. If "
+    "turning this quest in should plausibly move the player's standing with "
+    "an existing faction (e.g. doing a favor for a faction named in the "
+    "context's known_factions list), set faction_standing_delta to "
+    "{faction_id, tiers}, where faction_id is one of known_factions' own "
+    "ids (never invent one, and never set this if known_factions is empty) "
+    "and tiers is a small integer -- usually 1, rarely 2 -- positive to "
+    "move standing toward friendlier tiers, negative toward more hostile "
+    "ones. Omit faction_standing_delta entirely for an ordinary quest with "
+    "no faction impact. The "
     "context's player.derived_role_hint is a short "
     "phrase describing who the player is becoming (e.g. 'trade-focused, "
     "combat-averse') -- let it color the title's and description's word "
-    "choice/tone, never reward_gold, needs_new_place, needs_new_npc, or any "
-    "requirement in either manifest, all of which must stay strictly "
-    "determined by the situation and existing world truth."
+    "choice/tone, never reward_gold, needs_new_place, needs_new_npc, "
+    "faction_standing_delta, or any requirement in either manifest, all of "
+    "which must stay strictly determined by the situation and existing "
+    "world truth."
 )
 
 _MANIFEST_SCHEMA = {
@@ -125,6 +135,22 @@ QUEST_SCHEMA = {
         # needs_new_place/place_hint, but for generation/npc.py.
         "needs_new_npc": {"type": "boolean"},
         "npc_hint": {"type": "string"},
+        # Step 10 Stage 4 follow-up: the first live trigger that actually
+        # moves faction standing (see factions.adjust_standing/quests.
+        # turn_in) -- optional, same pattern as needs_new_place/needs_new_npc
+        # above. faction_id must come from context's known_factions (see
+        # context.py); quests.turn_in silently skips applying this rather
+        # than failing turn-in if faction_id doesn't resolve to a real
+        # World.factions entry, same "never crash on a dangling AI-proposed
+        # reference" posture as canon.py's own checks.
+        "faction_standing_delta": {
+            "type": "object",
+            "properties": {
+                "faction_id": {"type": "string"},
+                "tiers": {"type": "integer"},
+            },
+            "required": ["faction_id", "tiers"],
+        },
         # The precondition manifest (SPEC.md §8): gates whether this quest is
         # still valid to OFFER. pool.commit_or_repair/pool.pull are the only
         # things that ever read this one.

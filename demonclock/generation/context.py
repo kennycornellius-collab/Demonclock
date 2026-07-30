@@ -43,6 +43,18 @@ def build_batch_context(state: GameState) -> dict:
         },
         "current_node": _node_truth(current_node),
         "neighbor_nodes": [_node_truth(node) for node in neighbor_nodes],
+        # Step 10 Stage 4's faction system had a data model + checker but no
+        # generator-visible list of which factions actually exist -- without
+        # this, the Quest agent had no legitimate id to ever reference for a
+        # FACTION_STANDING_AT_LEAST requirement or a faction_standing_delta
+        # (quest.py) other than hallucinating one. Small and hand-authored by
+        # design (seed.py, no generator creates factions yet), so including
+        # ALL of them stays consistent with the bounded-retrieved-slice
+        # invariant this module otherwise enforces via node/event windows.
+        "known_factions": [
+            {"id": faction.id, "name": faction.name, "description": faction.description}
+            for faction in world.factions.values()
+        ],
         "recent_events": [
             {
                 "day": entry.day,

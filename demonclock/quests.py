@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from . import factions
 from .canon import CheckResult, PreconditionManifest, check_manifest
 
 if TYPE_CHECKING:
@@ -35,7 +36,9 @@ def check_completion(state: GameState, quest: dict) -> CheckResult:
 
 def turn_in(state: GameState, quest: dict) -> list[str]:
     """Never mutates state on failure (completion requirements not yet met).
-    On success: grants reward_gold and removes the quest from
+    On success: grants reward_gold, applies an optional faction_standing_delta
+    (generation/quest.py's schema, Step 10 Stage 4 follow-up -- the first
+    live trigger that actually moves standing), and removes the quest from
     Player.accepted_quests -- no location requirement (no NPC to return to
     exists yet)."""
     result = check_completion(state, quest)
@@ -45,6 +48,29 @@ def turn_in(state: GameState, quest: dict) -> list[str]:
 
     reward = quest.get("reward_gold", 0)
     state.player.gold += reward
-    state.player.accepted_quests.remove(quest)
     title = quest.get("title", quest.get("id", "quest"))
-    return [f"Quest complete: {title}! You receive {reward} gold."]
+    lines = [f"Quest complete: {title}! You receive {reward} gold."]
+
+    delta = quest.get("faction_standing_delta")
+    if isinstance(delta, dict):
+        lines.extend(_apply_faction_standing_delta(state, delta))
+
+    state.player.accepted_quests.remove(quest)
+    return lines
+
+
+def _apply_faction_standing_delta(state: GameState, delta: dict) -> list[str]:
+    """A dangling/malformed faction_standing_delta (unknown faction_id, or a
+    non-numeric tiers -- both possible from an AI-generated quest payload
+    that was never canon-checked, unlike the two manifests) is silently
+    skipped rather than failing the whole turn-in -- same "never crash on a
+    dangling AI-proposed reference" posture as canon.py's own checks, just
+    applied here since this field isn't part of either PreconditionManifest."""
+    faction_id, tiers = delta.get("faction_id"), delta.get("tiers")
+    if faction_id not in state.world.factions:
+        return []
+    if not isinstance(tiers, (int, float)) or isinstance(tiers, bool) or tiers == 0:
+        return []
+    new_tier = factions.adjust_standing(state.player, faction_id, int(tiers))
+    faction_name = state.world.factions[faction_id].name
+    return [f"Your standing with {faction_name} is now {new_tier}."]

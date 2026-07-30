@@ -5,7 +5,7 @@ just enough nodes to prove Move/Look/Rest and pathfinding work end to end.
 from __future__ import annotations
 
 from .events import EventKind, ScheduledEvent
-from .models import NPC, Node
+from .models import NPC, Faction, Node
 from .world import World
 
 START_NODE_ID = "village"
@@ -43,6 +43,20 @@ def new_default_world() -> World:
     world.add_link("village", "road", "north", travel_days=1)
     world.add_link("road", "wilds", "north", travel_days=2)
 
+    # Step 10 Stage 4 follow-up: one hand-seeded faction, matching SPEC.md
+    # §8's own worked example ("faction_standing(merchants): >= neutral")
+    # literally by id -- previously the whole faction system (factions.py,
+    # canon.RequirementKind.FACTION_STANDING_AT_LEAST, Player.
+    # faction_standing) was unreachable content, since nothing ever created
+    # a real Faction for anything to check standing against. No generator
+    # creates factions yet (same "hand-authored, small by design" status as
+    # WILD_ENEMY_BY_NODE), which is also why generation/context.py can
+    # afford to include ALL of world.factions in every batch's bounded slice.
+    world.add_faction(Faction(
+        id="merchants", name="The Merchants' Guild",
+        description="Millhaven's trade guild -- millers, traders, and the market warden's watch.",
+    ))
+
     # Step 10 Stage 3: a couple of hand-seeded starter NPCs (same
     # "immediately playable, no generator required" role as
     # WILD_ENEMY_BY_NODE above) alongside generation/npc.py's later,
@@ -50,7 +64,7 @@ def new_default_world() -> World:
     world.add_npc(NPC(
         id="miller_hana", name="Hana the Miller", location_id="village",
         description="Runs Millhaven's grain mill, flour dust in her hair.",
-        tags=["villager", "merchant"],
+        tags=["villager", "merchant"], faction_id="merchants",
     ))
     world.add_npc(NPC(
         id="market_warden_oskar", name="Warden Oskar", location_id="market",

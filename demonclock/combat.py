@@ -162,6 +162,14 @@ class Combatant:
     # Unused by ordinary combat.run_combat; defaults False so nothing here
     # changes for existing fights.
     immune: bool = False
+    # True for a combatant whose `name` is already a proper name (e.g. an
+    # NPC like "Hana the Miller" -- npc_combat.combatant_for_npc sets this).
+    # _enemies_desc below skips its usual "the X" prefix for these, since
+    # "the Hana the Miller" reads as a doubled-up article rather than
+    # flavor (updates.md, "Open bugs," surfaced 2026-07-31 building NPC
+    # combat). Defaults False so every wild-enemy/boss/add's existing,
+    # already-tested "the X" wording is completely unchanged.
+    proper_name: bool = False
 
     @classmethod
     def from_player(cls, player: Player) -> "Combatant":
@@ -459,8 +467,15 @@ def _enemies_desc(enemies: list[Combatant]) -> str:
     """'the X' for one enemy (byte-identical to every message run_combat
     printed before Step 10 Stage 6 generalized it), 'the X and the Y' / 'the
     X, the Y, and the Z' for more — used to keep run_group_combat's
-    single-enemy narration textually identical to the old run_combat."""
-    named = [f"the {enemy.name}" for enemy in enemies]
+    single-enemy narration textually identical to the old run_combat.
+
+    A `proper_name` combatant (an NPC, e.g. "Hana the Miller") skips the
+    "the " prefix entirely — "the Hana the Miller" read as a doubled-up
+    article rather than flavor (updates.md "Open bugs," surfaced
+    2026-07-31). Every wild enemy/boss/add still defaults `proper_name` to
+    False, so this is purely additive: none of their existing wording
+    changes."""
+    named = [enemy.name if enemy.proper_name else f"the {enemy.name}" for enemy in enemies]
     if len(named) == 1:
         return named[0]
     if len(named) == 2:

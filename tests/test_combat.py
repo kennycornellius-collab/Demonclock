@@ -699,3 +699,44 @@ def test_run_combat_wording_is_unchanged_by_the_run_group_combat_refactor():
 
     assert result is CombatResult.VICTORY
     assert log[-1] == "You defeated the Weakling!"
+
+
+# --- _enemies_desc: proper_name skips the "the" prefix (updates.md "Open
+# bugs," fixed 2026-07-31) -------------------------------------------------
+
+def test_enemies_desc_skips_the_prefix_for_a_proper_named_combatant():
+    player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
+    npc = Combatant(
+        name="Hana the Miller", hp=5, hp_max=5, strength=1, agility=1, defense=0, proper_name=True,
+    )
+
+    result, log = run_combat(player, npc, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert result is CombatResult.VICTORY
+    assert log[-1] == "You defeated Hana the Miller!"
+    assert "the Hana the Miller" not in " ".join(log)
+
+
+def test_enemies_desc_still_prefixes_the_for_an_ordinary_enemy_by_default():
+    # proper_name defaults False -- every wild enemy/boss/add's existing
+    # wording must stay exactly as it was before this field existed.
+    player = make_player(strength=50, defense=20, agility=100, hp=100, hp_max=100)
+    enemy = make_combatant(name="Brute", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    result, log = run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert log[-1] == "You defeated the Brute!"
+
+
+def test_enemies_desc_mixes_proper_and_ordinary_names_in_a_group_fight():
+    player = make_player(strength=9999, defense=20, agility=100, hp=100, hp_max=100)
+    npc = Combatant(name="Hana the Miller", hp=1, hp_max=1, strength=1, agility=1, defense=0, proper_name=True)
+    wolf = make_combatant(name="Bramblewood Wolf", hp=1, hp_max=1, strength=1, agility=1, defense=0)
+
+    def choose_action(fighter, alive_enemies, options):
+        return BASIC_ATTACK, alive_enemies[0]
+
+    result, log = run_group_combat(player, [npc, wolf], choose_action)
+
+    assert result is CombatResult.VICTORY
+    assert "Hana the Miller and the Bramblewood Wolf" in log[-1]

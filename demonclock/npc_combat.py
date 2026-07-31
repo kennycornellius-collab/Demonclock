@@ -73,7 +73,10 @@ def combatant_for_npc(npc: NPC) -> Combatant:
     wild foe, so an NPC fight (Chunk B) reuses combat.run_group_combat/
     apply_skill completely unchanged, no NPC-specific combat code path.
     Luck defaults to 0 (Combatant's own default) — same "start rough"
-    status as every enemy/boss/add today: an NPC never crits either."""
+    status as every enemy/boss/add today: an NPC never crits either.
+    proper_name=True so combat._enemies_desc doesn't prefix an NPC's own
+    proper name with "the" (updates.md "Open bugs," fixed 2026-07-31 --
+    "the Hana the Miller" read as a doubled-up article)."""
     stats = _ARCHETYPE_STATS[archetype_for(npc)]
     return Combatant(
         name=npc.name,
@@ -82,4 +85,5 @@ def combatant_for_npc(npc: NPC) -> Combatant:
         strength=stats["strength"],
         agility=stats["agility"],
         defense=stats["defense"],
+        proper_name=True,
     )

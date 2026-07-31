@@ -68,6 +68,12 @@ def test_combatant_for_npc_stats_scale_with_archetype_strength():
     assert civilian.strength < merchant.strength < guard.strength < warrior.strength
 
 
+def test_combatant_for_npc_sets_proper_name_true():
+    # So combat._enemies_desc skips its usual "the X" prefix for an NPC's
+    # own proper name (updates.md "Open bugs," fixed 2026-07-31).
+    assert combatant_for_npc(make_npc(name="Hana the Miller")).proper_name is True
+
+
 def test_combatant_for_npc_never_crits_by_default():
     # Same "start rough" status every enemy/boss/add already has (Step 9) --
     # an NPC never has an explicit luck stat set here either.

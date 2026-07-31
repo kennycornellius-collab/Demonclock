@@ -57,9 +57,14 @@ class InventoryItem:
 
 @dataclass
 class NPC:
-    """Step 10 Stage 3 (SPEC §6/§7): a talkable, non-combat entity. No HP/
-    combat fields on purpose — an NPC is never a fight target, unlike
-    enemies.py's Combatant-backed foes."""
+    """Step 10 Stage 3 (SPEC §6/§7): a talkable entity. Originally "never a
+    fight target" — reversed by "faction standing: combat trigger"
+    (updates.md, resolved 2026-07-31, built as Chunks A-D): an NPC CAN now
+    be fought (see npc_combat.py), but still carries no HP/combat fields of
+    its own here — stats are resolved fresh from an archetype (npc_combat.
+    archetype_for, keyed off `tags` below) exactly the same way
+    enemies.make_enemy resolves a wild foe's stats from a small hand-
+    authored table rather than per-instance data."""
     id: str
     name: str
     location_id: str

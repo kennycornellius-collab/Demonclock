@@ -36,6 +36,12 @@ def new_default_world() -> World:
     world.add_node(Node(
         id="market", name="Millhaven Market", type="market", tags=["trade-hub"],
         prices={"grain": 10, "wool": 8, "iron_ore": 15},
+        # "Faction standing: trade trigger" (updates.md, resolved
+        # 2026-07-31, Chunk D): trade.buy/sell nudges standing with
+        # whichever faction (if any) a node is affiliated with -- market is
+        # the one node seeded that way, matching Warden Oskar's own guard
+        # presence here and Hana's merchants affiliation at the mill.
+        faction_id="merchants",
     ))
     world.add_node(Node(id="road", name="Old North Road", type="road"))
     # Starts "occupied" — it borders demon-king territory (SPEC.md §12 step 2,

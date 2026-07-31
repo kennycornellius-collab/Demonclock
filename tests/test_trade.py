@@ -1,15 +1,22 @@
 from demonclock.clock import Clock
-from demonclock.models import Node
+from demonclock.models import Faction, Node
 from demonclock.player import add_item
 from demonclock.state import GameState
-from demonclock.trade import MIN_PRICE, TRADE_IMPACT_CAP, TRADE_IMPACT_PER_UNIT, buy, sell
+from demonclock.trade import (
+    MIN_PRICE,
+    TRADE_IMPACT_CAP,
+    TRADE_IMPACT_PER_UNIT,
+    TRADE_STANDING_THRESHOLD,
+    buy,
+    sell,
+)
 from demonclock.player import new_player
 from demonclock.world import World
 
 
-def make_world(node_id: str = "market", prices: dict | None = None) -> World:
+def make_world(node_id: str = "market", prices: dict | None = None, faction_id: str | None = None) -> World:
     world = World()
-    world.add_node(Node(id=node_id, name=node_id.title(), prices=prices or {}))
+    world.add_node(Node(id=node_id, name=node_id.title(), prices=prices or {}, faction_id=faction_id))
     return world
 
 
@@ -130,3 +137,59 @@ def test_trades_record_a_behavior_action():
     buy(state, "market", "grain", 1)
 
     assert state.player.behavior.trade_actions == 1.0
+
+
+# -- faction standing trade trigger (updates.md, resolved 2026-07-31, Chunk D)
+
+def test_buy_below_threshold_does_not_touch_standing():
+    world = make_world(prices={"grain": 10}, faction_id="merchants")
+    world.add_faction(Faction(id="merchants", name="The Merchants' Guild"))
+    state = make_state(world, gold=100_000)
+
+    log = buy(state, "market", "grain", TRADE_STANDING_THRESHOLD - 1)
+
+    assert state.player.faction_standing == {}
+    assert not any("standing" in line.lower() for line in log)
+
+
+def test_buy_at_the_threshold_nudges_standing_up():
+    world = make_world(prices={"grain": 10}, faction_id="merchants")
+    world.add_faction(Faction(id="merchants", name="The Merchants' Guild"))
+    state = make_state(world, gold=100_000)
+
+    log = buy(state, "market", "grain", TRADE_STANDING_THRESHOLD)
+
+    assert state.player.faction_standing["merchants"] == "friendly"  # neutral +1
+    assert any("standing" in line.lower() for line in log)
+
+
+def test_sell_at_the_threshold_nudges_standing_up():
+    world = make_world(prices={"grain": 10}, faction_id="merchants")
+    world.add_faction(Faction(id="merchants", name="The Merchants' Guild"))
+    state = make_state(world, gold=0)
+    add_item(state.player, "grain", "Grain", TRADE_STANDING_THRESHOLD)
+
+    log = sell(state, "market", "grain", TRADE_STANDING_THRESHOLD)
+
+    assert state.player.faction_standing["merchants"] == "friendly"
+    assert any("standing" in line.lower() for line in log)
+
+
+def test_trade_at_an_unaffiliated_node_never_touches_standing():
+    world = make_world(prices={"grain": 10})  # faction_id defaults to None
+    state = make_state(world, gold=100_000)
+
+    log = buy(state, "market", "grain", TRADE_STANDING_THRESHOLD * 5)
+
+    assert state.player.faction_standing == {}
+    assert not any("standing" in line.lower() for line in log)
+
+
+def test_trade_with_a_dangling_faction_id_does_not_crash_or_touch_standing():
+    world = make_world(prices={"grain": 10}, faction_id="ghost_faction")  # never registered
+    state = make_state(world, gold=100_000)
+
+    log = buy(state, "market", "grain", TRADE_STANDING_THRESHOLD * 5)
+
+    assert state.player.faction_standing == {}
+    assert not any("standing" in line.lower() for line in log)

@@ -94,6 +94,24 @@ def test_skill_use_count_round_trips(tmp_path):
     conn.close()
 
 
+def test_node_faction_id_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A", faction_id="merchants"))
+    world.add_node(Node(id="b", name="B"))  # unaffiliated -- must round-trip as None
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    loaded_world, _, _ = db.load_game(conn)
+
+    assert loaded_world.nodes["a"].faction_id == "merchants"
+    assert loaded_world.nodes["b"].faction_id is None
+
+    conn.close()
+
+
 def test_creative_mode_used_flag_persists(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

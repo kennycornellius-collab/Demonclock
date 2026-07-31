@@ -35,6 +35,13 @@ class Node:
     tags: list[str] = field(default_factory=list)
     last_event_day: int = 0
     prices: dict[str, int] = field(default_factory=dict)  # good_id -> current price (SPEC §4/§10)
+    # "Faction standing: trade trigger" (updates.md, resolved 2026-07-31,
+    # Chunk D): which Faction (if any) trade at this node benefits --
+    # mirrors NPC.faction_id exactly. None is a perfectly ordinary,
+    # unaffiliated node (most of them); no generator assigns this yet, same
+    # hand-authored-only status NPC.faction_id had before Step 10 Stage 4's
+    # own first live trigger.
+    faction_id: str | None = None
 
 
 @dataclass

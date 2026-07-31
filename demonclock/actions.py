@@ -184,7 +184,7 @@ def _resolve_rest(state: GameState) -> Outcome:
 
     leaked = newspaper.leaked_since(state.world, location_id, day_before, state.clock.current_day)
     newspaper_text = newspaper.format_newspaper(
-        leaked, state.generation, behavior.derived_role_hint(player.behavior),
+        leaked, state.generation, behavior.effective_role_hint(player.behavior, player.declared_intent),
     )
     if newspaper_text:
         message += "\n" + newspaper_text

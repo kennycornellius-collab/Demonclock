@@ -6,8 +6,11 @@ from .models import InventoryItem, Player
 from .skills import starter_skills
 
 
-def new_player(name: str, location_id: str) -> Player:
-    return Player(name=name, location_id=location_id, skills=starter_skills())
+def new_player(name: str, location_id: str, declared_intent: str | None = None) -> Player:
+    return Player(
+        name=name, location_id=location_id, skills=starter_skills(),
+        declared_intent=declared_intent,
+    )
 
 
 def add_item(player: Player, item_id: str, name: str, quantity: int = 1) -> None:

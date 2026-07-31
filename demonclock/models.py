@@ -140,3 +140,11 @@ class Player:
     # Written ONLY by journal.record, from combat.py/setback.py/quests.py/
     # actions.py/game.py at the point each of those facts becomes true.
     journal: list[JournalEntry] = field(default_factory=list)
+    # "Declared intent" (updates.md, resolved 2026-07-31): free text the
+    # player types once at character creation ("what are you setting out to
+    # become?") -- skippable, None if skipped. Fixed forever once set; purely
+    # a generation-prompt tone nudge (behavior.effective_role_hint), never a
+    # mechanical/canon fact -- SPEC.md §0 pillar 3 ("roles are emergent,
+    # never assigned") stays intact, since derived_role_hint always wins once
+    # real play says anything beyond its own neutral default.
+    declared_intent: str | None = None

@@ -79,9 +79,9 @@ GAME_OVER_MESSAGES = {
 MAX_RUMORS_SHOWN = 5
 
 
-def new_game(player_name: str) -> GameState:
+def new_game(player_name: str, declared_intent: str | None = None) -> GameState:
     world = new_default_world()
-    player = new_player(name=player_name, location_id="village")
+    player = new_player(name=player_name, location_id="village", declared_intent=declared_intent)
     # A fresh character already knows the ground they're standing on.
     knowledge.observe_node(player.beliefs, world.nodes[player.location_id], current_day=0)
     return GameState(world=world, player=player, clock=Clock())
@@ -231,7 +231,7 @@ def _handle_talk(state: GameState, npc: NPC) -> None:
         print(f"{npc.name} has something for you:")
         _offer_quest(state, offered)
 
-    hint = behavior.derived_role_hint(state.player.behavior)
+    hint = behavior.effective_role_hint(state.player.behavior, state.player.declared_intent)
     opening = run_dialogue_opening(state.generation, npc, hint)
     behavior.record_dialogue_action(state.player.behavior)
 
@@ -330,7 +330,7 @@ def _handle_fight(state: GameState, enemy_ids: list[str]) -> None:
     result, log = combat.run_group_combat(state.player, enemies, choose_action, current_day=state.clock.current_day)
     for line in log:
         print(line)
-    hint = behavior.derived_role_hint(state.player.behavior)
+    hint = behavior.effective_role_hint(state.player.behavior, state.player.declared_intent)
     opponent_desc = enemies[0].name if len(enemies) == 1 else ", ".join(e.name for e in enemies)
     summary = narrate_combat_outcome(state.generation, opponent_desc, result.value, log, hint)
     if summary:
@@ -389,7 +389,7 @@ def _handle_demon_king(state: GameState) -> None:
     result, log = boss.run_encounter(state.player, boss.DEMON_KING_ENCOUNTER, choose_action)
     for line in log:
         print(line)
-    hint = behavior.derived_role_hint(state.player.behavior)
+    hint = behavior.effective_role_hint(state.player.behavior, state.player.declared_intent)
     summary = narrate_combat_outcome(state.generation, boss.DEMON_KING_ENCOUNTER.boss.name, result.value, log, hint)
     if summary:
         print(summary)
@@ -483,7 +483,7 @@ def handle_ask_around(state: GameState) -> None:
         print("No one here has heard anything worth repeating.")
         return
     print("--- Word around here ---")
-    hint = behavior.derived_role_hint(state.player.behavior)
+    hint = behavior.effective_role_hint(state.player.behavior, state.player.declared_intent)
     for rumor in heard[:MAX_RUMORS_SHOWN]:
         text = reword_rumor(state.generation, rumor.text, rumor.confidence, hint)
         print(f"  ({rumor.confidence:.0%} sure) {text}")
@@ -884,7 +884,14 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         print(f"Welcome back, {player.name}. Resuming on day {clock.current_day}.")
     else:
         name = input("Name your character: ").strip() or "Hero"
-        state = new_game(name)
+        # "Declared intent" (updates.md, resolved 2026-07-31): a one-time,
+        # skippable, purely flavor-tone nudge -- see Player.declared_intent
+        # and behavior.effective_role_hint for why this never becomes an
+        # assigned role.
+        declared_intent = input(
+            "What are you setting out to become? (optional, Enter to skip) "
+        ).strip() or None
+        state = new_game(name, declared_intent)
         state.generation = registry
         print(f"A new journey begins, {state.player.name}.")
 

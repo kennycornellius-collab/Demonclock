@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS player (
     ransom_cost INTEGER NOT NULL DEFAULT 0,
     free_by_day INTEGER,  -- NULL whenever not captured (setback.py, SPEC §11.1)
     game_over TEXT,  -- NULL while ongoing; 'victory'|'defeat' once resolved (boss.py, SPEC §11.1)
-    faction_standing TEXT NOT NULL DEFAULT '{}'  -- JSON dict: faction_id -> tier (Step 10 Stage 4)
+    faction_standing TEXT NOT NULL DEFAULT '{}',  -- JSON dict: faction_id -> tier (Step 10 Stage 4)
+    declared_intent TEXT  -- NULL if skipped at character creation (updates.md, resolved 2026-07-31)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -197,8 +198,8 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         "strength, magic, agility, defense, charisma, perception, luck, gold, "
         "creative_mode_used, trade_actions, combat_actions, dialogue_actions, "
         "crafting_actions, last_gold, gold_trend, recent_locations, captured, "
-        "ransom_cost, free_by_day, game_over, faction_standing) "
-        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "ransom_cost, free_by_day, game_over, faction_standing, declared_intent) "
+        "VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             player.name,
             player.location_id,
@@ -227,6 +228,7 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
             player.free_by_day,
             player.game_over,
             json.dumps(player.faction_standing),
+            player.declared_intent,
         ),
     )
     for item in player.inventory:
@@ -380,7 +382,7 @@ def load_game(conn: sqlite3.Connection):
         "agility, defense, charisma, perception, luck, gold, creative_mode_used, "
         "trade_actions, combat_actions, dialogue_actions, crafting_actions, "
         "last_gold, gold_trend, recent_locations, captured, ransom_cost, free_by_day, "
-        "game_over, faction_standing "
+        "game_over, faction_standing, declared_intent "
         "FROM player WHERE id = 0"
     ).fetchone()
     inventory = [
@@ -409,6 +411,7 @@ def load_game(conn: sqlite3.Connection):
         captured=bool(prow[22]), ransom_cost=prow[23], free_by_day=prow[24],
         beliefs=beliefs, accepted_quests=accepted_quests, game_over=prow[25],
         faction_standing=json.loads(prow[26]), journal=journal,
+        declared_intent=prow[27],
     )
 
     day_row = conn.execute("SELECT value FROM meta WHERE key = 'current_day'").fetchone()

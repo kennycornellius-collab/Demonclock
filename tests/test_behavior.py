@@ -4,6 +4,7 @@ from demonclock.behavior import (
     BehaviorProfile,
     DECAY_FACTOR,
     derived_role_hint,
+    effective_role_hint,
     record_combat_action,
     record_crafting_action,
     record_dialogue_action,
@@ -126,3 +127,23 @@ def test_derived_role_hint_combines_multiple_tags():
 def test_derived_role_hint_prospering_on_rising_gold():
     profile = BehaviorProfile(gold_trend="rising")
     assert derived_role_hint(profile) == "prospering"
+
+
+def test_effective_role_hint_falls_back_to_declared_intent_on_a_neutral_profile():
+    profile = BehaviorProfile()
+    assert effective_role_hint(profile, "an aspiring king") == "an aspiring king"
+
+
+def test_effective_role_hint_ignores_declared_intent_once_real_behavior_says_something():
+    profile = BehaviorProfile(combat_actions=5.0)
+    assert effective_role_hint(profile, "an aspiring king") == "combat-focused"
+
+
+def test_effective_role_hint_stays_neutral_with_no_declared_intent_and_no_real_signal():
+    profile = BehaviorProfile()
+    assert effective_role_hint(profile, None) == "still finding their way"
+
+
+def test_effective_role_hint_defaults_declared_intent_to_none():
+    profile = BehaviorProfile()
+    assert effective_role_hint(profile) == "still finding their way"

@@ -640,6 +640,38 @@ def test_player_faction_standing_defaults_to_empty_for_a_fresh_player(tmp_path):
     conn.close()
 
 
+def test_player_declared_intent_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a", declared_intent="a merchant prince")
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.declared_intent == "a merchant prince"
+
+    conn.close()
+
+
+def test_player_declared_intent_defaults_to_none_when_skipped(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = World()
+    world.add_node(Node(id="a", name="A"))
+    player = new_player(name="Astra", location_id="a")
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.declared_intent is None
+
+    conn.close()
+
+
 def test_invasion_origin_id_defaults_to_none_when_unset(tmp_path):
     from demonclock.models import Node
     from demonclock.world import World

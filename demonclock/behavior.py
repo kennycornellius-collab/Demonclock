@@ -28,6 +28,13 @@ RECENT_LOCATIONS_MAX = 5
 
 ROLE_HINT_THRESHOLD = 3.0
 
+# The exact string derived_role_hint returns once no threshold has been
+# crossed yet -- effective_role_hint (updates.md, "declared intent," resolved
+# 2026-07-31) checks against this literal to decide whether real accrued
+# behavior has said anything yet, or whether a declared_intent fallback
+# should be used instead.
+NEUTRAL_ROLE_HINT = "still finding their way"
+
 
 @dataclass
 class BehaviorProfile:
@@ -108,4 +115,22 @@ def derived_role_hint(profile: BehaviorProfile) -> str:
         tags.append("prospering")
     elif profile.gold_trend == "falling":
         tags.append("financially strained")
-    return ", ".join(tags) if tags else "still finding their way"
+    return ", ".join(tags) if tags else NEUTRAL_ROLE_HINT
+
+
+def effective_role_hint(profile: BehaviorProfile, declared_intent: str | None = None) -> str:
+    """The generation-prompt-facing hint (updates.md, "declared intent,"
+    resolved 2026-07-31): prefers the real derived_role_hint the moment
+    accrued play has said anything beyond its own neutral default, and only
+    falls back to the player's one-time declared_intent while that's still
+    true -- no separate decay timer, since derived_role_hint's own threshold
+    check already IS the "has real behavior taken over yet" signal. Every
+    caller that already threads derived_role_hint into an AI prompt should
+    call this instead; a plain deterministic display (e.g. the Inventory
+    screen's "You seem: ..." line) intentionally still calls
+    derived_role_hint directly -- declared_intent never overrides what the
+    player is actually reporting about themselves outside of generation."""
+    hint = derived_role_hint(profile)
+    if hint != NEUTRAL_ROLE_HINT or not declared_intent:
+        return hint
+    return declared_intent

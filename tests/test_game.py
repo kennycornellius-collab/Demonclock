@@ -555,3 +555,79 @@ def test_report_ai_connectivity_prints_a_clear_warning_when_configured_but_unrea
     out = capsys.readouterr().out
     assert "unreachable" in out.lower()
     assert "API key" in out
+
+
+# --- Declared intent (updates.md, resolved 2026-07-31) -----------------------
+
+def test_new_game_wires_declared_intent_into_the_player():
+    state = game.new_game("Hero", "an aspiring king")
+    assert state.player.declared_intent == "an aspiring king"
+
+
+def test_new_game_defaults_declared_intent_to_none_when_skipped():
+    state = game.new_game("Hero")
+    assert state.player.declared_intent is None
+
+
+class _SpyClient:
+    """A minimal duck-typed LLMClient recording the last `user` JSON string
+    sent, matching test_narrator.py's own SpyClient -- lets this test assert
+    what actually reached the payload rather than just that a call happened."""
+
+    def __init__(self, response: dict) -> None:
+        self._response = response
+        self.last_user: str | None = None
+
+    def generate_structured(self, system: str, user: str, schema: dict) -> dict:
+        self.last_user = user
+        return self._response
+
+
+def test_handle_ask_around_falls_back_to_declared_intent_on_a_neutral_profile(monkeypatch, capsys):
+    import json as _json
+
+    from demonclock.events import EventKind
+    from demonclock.history import record
+
+    world = World()
+    world.add_node(Node(id="here", name="Here"))
+    world.add_node(Node(id="there", name="There"))
+    world.add_link("here", "there", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="there", kind=EventKind.SET_NODE_STATE, description="Something happened.")
+
+    player = Player(name="Hero", location_id="here", declared_intent="an aspiring king")
+    state = GameState(world=world, player=player, clock=Clock(current_day=1))
+
+    spy = _SpyClient({"text": "reworded"})
+    config = GenerationConfig(roles={"narrator": [ProviderSpec(provider="spy")]})
+    state.generation = LLMRegistry(config, extra_clients={"spy": spy})
+
+    game.handle_ask_around(state)
+
+    assert spy.last_user is not None
+    assert _json.loads(spy.last_user)["player_role_hint"] == "an aspiring king"
+
+
+def test_handle_ask_around_prefers_real_behavior_over_declared_intent(monkeypatch, capsys):
+    import json as _json
+
+    from demonclock.events import EventKind
+    from demonclock.history import record
+
+    world = World()
+    world.add_node(Node(id="here", name="Here"))
+    world.add_node(Node(id="there", name="There"))
+    world.add_link("here", "there", "north", travel_days=1)
+    record(world.event_log, day=0, node_id="there", kind=EventKind.SET_NODE_STATE, description="Something happened.")
+
+    player = Player(name="Hero", location_id="here", declared_intent="an aspiring king")
+    player.behavior.combat_actions = 5.0
+    state = GameState(world=world, player=player, clock=Clock(current_day=1))
+
+    spy = _SpyClient({"text": "reworded"})
+    config = GenerationConfig(roles={"narrator": [ProviderSpec(provider="spy")]})
+    state.generation = LLMRegistry(config, extra_clients={"spy": spy})
+
+    game.handle_ask_around(state)
+
+    assert _json.loads(spy.last_user)["player_role_hint"] == "combat-focused"

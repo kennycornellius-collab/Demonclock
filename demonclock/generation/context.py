@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..behavior import derived_role_hint
+from ..behavior import effective_role_hint
 from ..models import Node
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ def build_batch_context(state: GameState) -> dict:
         "player": {
             "location_id": current_node.id,
             "gold": player.gold,
-            "derived_role_hint": derived_role_hint(player.behavior),
+            "derived_role_hint": effective_role_hint(player.behavior, player.declared_intent),
             "gold_trend": player.behavior.gold_trend,
         },
         "current_node": _node_truth(current_node),

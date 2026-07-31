@@ -429,6 +429,114 @@ def test_free_text_skills_atlas_quests_ask_around_dispatch_to_their_own_handlers
     assert "Nothing worth recording yet." in capsys.readouterr().out
 
 
+# --- Attack NPC ("faction standing: combat trigger" Chunk B, updates.md) ---
+
+def test_handle_interact_offers_attack_alongside_talk_for_each_npc(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    feed_inputs(monkeypatch, [""])  # picker shown; blank cancels
+
+    game.handle_interact(state)
+
+    out = capsys.readouterr().out
+    assert "Talk to Hana the Miller" in out
+    assert "Attack Hana the Miller" in out
+
+
+def test_handle_attack_npc_leave_cancels_before_any_combat(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    called = []
+    monkeypatch.setattr(game.combat, "run_group_combat", lambda *a, **k: called.append(1))
+    feed_inputs(monkeypatch, ["2"])  # Leave
+
+    game._handle_attack_npc(state, npc)
+
+    assert called == []
+    assert "miller_hana" in state.world.npcs
+
+
+def test_handle_attack_npc_victory_removes_the_npc_permanently(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    monkeypatch.setattr(
+        game.combat, "run_group_combat", lambda *a, **k: (CombatResult.VICTORY, ["stub log"]),
+    )
+    feed_inputs(monkeypatch, ["1"])  # Attack
+
+    game._handle_attack_npc(state, npc)
+
+    assert "miller_hana" not in state.world.npcs
+
+
+def test_handle_attack_npc_defeat_leaves_the_npc_alive(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    monkeypatch.setattr(
+        game.combat, "run_group_combat", lambda *a, **k: (CombatResult.DEFEAT, ["stub log"]),
+    )
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    assert "miller_hana" in state.world.npcs
+
+
+def test_handle_attack_npc_flee_leaves_the_npc_alive(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    monkeypatch.setattr(
+        game.combat, "run_group_combat", lambda *a, **k: (CombatResult.FLED, ["stub log"]),
+    )
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    assert "miller_hana" in state.world.npcs
+
+
+def test_handle_attack_npc_reprompts_on_an_invalid_skill_choice_instead_of_defaulting(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    captured = {}
+
+    def fake_run_group_combat(player, enemies, choose_action, current_day=0, rng=None):
+        captured["result"] = choose_action(Combatant.from_player(player), enemies, [BASIC_ATTACK])
+        return CombatResult.FLED, ["stub log"]
+
+    monkeypatch.setattr(game.combat, "run_group_combat", fake_run_group_combat)
+    # Attack, then two invalid skill picks (the "0"-wraparound shape and a
+    # non-numeric one), then Flee -- same regression shape
+    # test_handle_fight_reprompts_on_an_invalid_skill_choice already covers
+    # for the ordinary wild-enemy path.
+    feed_inputs(monkeypatch, ["1", "0", "abc", "2"])
+
+    game._handle_attack_npc(state, npc)
+
+    out = capsys.readouterr().out
+    assert out.count("Not a valid choice.") == 2
+    assert captured["result"] is None
+
+
+def test_handle_attack_npc_real_fight_victory_removes_the_npc(monkeypatch):
+    # A real (unstubbed) fight, not just the input-handling stubs above --
+    # proves the actual wiring to npc_combat.combatant_for_npc/
+    # combat.run_group_combat works end to end, mirroring test_combat.py's
+    # own "overwhelming stats" precedent for a real (unseeded RNG) victory.
+    state = make_default_state(location_id="village")
+    state.player.strength = 500
+    state.player.skills = []  # usable_skills(fighter) is then just [BASIC_ATTACK]
+    npc = state.world.npcs["miller_hana"]  # merchant archetype, hp_max=20, defense=2
+
+    # "1" confirms Attack, then repeated "1"s (Basic Attack) in case of an
+    # occasional dodge -- overkill damage still guarantees a kill within a
+    # handful of rounds even against real, unseeded RNG.
+    feed_inputs(monkeypatch, ["1"] + ["1"] * 10)
+
+    game._handle_attack_npc(state, npc)
+
+    assert "miller_hana" not in state.world.npcs
+
+
 def test_handle_journal_prints_nothing_recorded_when_empty(capsys):
     state = make_default_state()
     game.handle_journal(state)

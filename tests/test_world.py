@@ -169,6 +169,23 @@ def test_npcs_at_returns_empty_list_for_a_node_with_no_npcs():
     assert world.npcs_at("a") == []
 
 
+def test_remove_npc_deletes_it_permanently():
+    # "Faction standing: combat trigger" (updates.md, resolved 2026-07-31,
+    # Chunk B): killing an NPC is permanent -- no respawn.
+    world = make_world("a")
+    world.add_npc(NPC(id="hana", name="Hana", location_id="a"))
+
+    world.remove_npc("hana")
+
+    assert "hana" not in world.npcs
+    assert world.npcs_at("a") == []
+
+
+def test_remove_npc_is_a_noop_for_an_unknown_id():
+    world = make_world("a")
+    world.remove_npc("does_not_exist")  # must not raise
+
+
 # -- Factions (Step 10 Stage 4) ----------------------------------------------
 
 def test_add_faction_registers_it_by_id():

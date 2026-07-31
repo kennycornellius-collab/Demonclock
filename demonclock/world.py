@@ -58,10 +58,12 @@ class World:
         # for any given node is harmless -- the caller just shows nothing
         # extra, same as before this existed.
         self.node_flavor: dict[str, str] = {}
-        # Talkable, non-combat entities (SPEC.md §6/§7, Step 10 Stage 3) --
-        # hand-seeded (seed.py) or added by generation/npc.py's materialize
-        # once a quest signals needs_new_npc. Never a fight target: no
-        # HP/combat fields on models.NPC, unlike enemies.py's foes.
+        # Talkable entities (SPEC.md §6/§7, Step 10 Stage 3) -- hand-seeded
+        # (seed.py) or added by generation/npc.py's materialize once a quest
+        # signals needs_new_npc. Also fightable and killable since "faction
+        # standing: combat trigger" (updates.md, resolved 2026-07-31, Chunk
+        # B) -- see npc_combat.py/remove_npc below; models.NPC itself still
+        # carries no HP/combat fields (stats are resolved fresh per fight).
         self.npcs: dict[str, NPC] = {}
         # Factions (SPEC.md §8, Step 10 Stage 4) -- fixed world content; a
         # player's relationship to one lives on Player.faction_standing, not
@@ -79,6 +81,15 @@ class World:
     def add_npc(self, npc: NPC) -> NPC:
         self.npcs[npc.id] = npc
         return npc
+
+    def remove_npc(self, npc_id: str) -> None:
+        """Permanently removes an NPC -- killing one in combat (updates.md,
+        "faction standing: combat trigger," resolved 2026-07-31, Chunk B) is
+        PERMANENT, a deliberate divergence from Step 10 Stage 6's
+        wild-enemy-always-respawns rule. A no-op if npc_id isn't present
+        (already removed, or never existed) rather than raising -- same
+        no-precondition-checking simplicity as add_npc itself."""
+        self.npcs.pop(npc_id, None)
 
     def add_faction(self, faction: Faction) -> Faction:
         self.factions[faction.id] = faction

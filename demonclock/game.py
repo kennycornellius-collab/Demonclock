@@ -25,6 +25,7 @@ from .llm import selftest
 from .llm.config import GenerationConfig
 from .llm.registry import LLMRegistry
 from .models import NPC
+from .npc_combat import combatant_for_npc
 from .parser import Action, ActionType, parse
 from .player import display_name, new_player
 from .resolve import resolve_entity
@@ -156,6 +157,12 @@ def handle_interact(state: GameState) -> None:
         options.append(("Fight", lambda: _handle_fight(state, enemy_ids)))
     for npc in state.world.npcs_at(node.id):
         options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
+        # "Faction standing: combat trigger" (updates.md, resolved
+        # 2026-07-31, Chunk B): menu-only for now, same as Talk/Trade/Craft
+        # originally were before Step 12's later, separate free-text pass --
+        # not wired into ActionType/_available_context_actions/the
+        # free-text fallback this chunk.
+        options.append((f"Attack {npc.name}", lambda npc=npc: _handle_attack_npc(state, npc)))
     if ActionType.CRAFT in available:
         options.append(("Craft", lambda: _handle_craft(state, node)))
 
@@ -260,6 +267,59 @@ def _handle_talk(state: GameState, npc: NPC) -> None:
             return
         reply = run_dialogue_reply(state.generation, npc, message, hint)
         print(reply if reply else f"{npc.name} just shrugs.")
+
+
+def _handle_attack_npc(state: GameState, npc: NPC) -> None:
+    """"Faction standing: combat trigger" (updates.md, resolved 2026-07-31),
+    Chunk B: NPCs stay neutral -- unlike WILD_ENEMY_BY_NODE foes (which
+    always fight on Interact), an NPC never initiates; this is the only way
+    a fight against one ever starts. Reuses combat.run_group_combat
+    completely unchanged (a single npc_combat.combatant_for_npc target) --
+    mechanically identical to an ordinary wild-enemy fight, just against a
+    Combatant built from the NPC's resolved archetype instead of enemies.
+    make_enemy. On DEFEAT, setback.py already fires automatically inside
+    run_group_combat, same as any ordinary lost fight -- nothing extra
+    needed here. On VICTORY the NPC is permanently removed from world.npcs
+    (no respawn, unlike a wild encounter node -- Step 10 Stage 6's
+    always-respawns rule is deliberately NOT extended to NPCs). Standing
+    consequences (the two-tier attack/kill penalty) land in Chunk C, not
+    here."""
+    print(f"Attack {npc.name}? There's no undoing this.")
+    choice = input("1) Attack  2) Leave\n> ").strip()
+    if choice != "1":
+        return
+
+    combatant = combatant_for_npc(npc)
+
+    def choose_action(fighter: combat.Combatant, alive_enemies: list[combat.Combatant], options: list):
+        target = alive_enemies[0]
+        print(f"Your HP: {fighter.hp}/{fighter.hp_max} MANA: {fighter.mana}/{fighter.mana_max}")
+        print(f"  {target.name} HP: {target.hp}/{target.hp_max}")
+        for i, skill in enumerate(options, start=1):
+            print(f"  {i}) {skill.name} (MP {skill.mana_cost})")
+        print(f"  {len(options) + 1}) Flee")
+        while True:
+            sub_choice = input("> ").strip()
+            if sub_choice == str(len(options) + 1):
+                return None
+            skill = _select(options, sub_choice)
+            if skill is not None:
+                break
+            print("Not a valid choice.")
+        return skill, target
+
+    result, log = combat.run_group_combat(
+        state.player, [combatant], choose_action, current_day=state.clock.current_day,
+    )
+    for line in log:
+        print(line)
+    hint = behavior.effective_role_hint(state.player.behavior, state.player.declared_intent)
+    summary = narrate_combat_outcome(state.generation, npc.name, result.value, log, hint)
+    if summary:
+        print(summary)
+
+    if result is combat.CombatResult.VICTORY:
+        state.world.remove_npc(npc.id)
 
 
 def _handle_craft(state: GameState, node) -> None:

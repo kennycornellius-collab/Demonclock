@@ -215,6 +215,28 @@ def _run_batch(state: GameState) -> None:
     run_batch(state, state.generation)
 
 
+def run_warm_start_batch(state: GameState) -> None:
+    """The warm-start batch (updates.md, "A warm-start generation batch,"
+    resolved 2026-07-31): a brand-new save's Quests/Ask around both come
+    back empty until `advance_time` fires its first real batch (Rest or
+    travel) -- reads as blank/suffocating rather than "freedom" to a fresh
+    player. `game.run()` calls this exactly once, immediately after
+    building a brand-new (never-loaded) GameState, before the player's
+    first real turn. Deliberately just a thin, self-documenting wrapper
+    around `_run_batch` itself -- the SAME machinery an ordinary
+    elapsed-time tick already calls, not a second generation path: both
+    streams run unchanged (no special-casing for "no accrued behavior
+    yet" -- world-driven content is deliberately player-independent by
+    design, SPEC.md §7, and a fresh BehaviorProfile already degrades
+    gracefully to a neutral hint), and this stays a no-op whenever
+    state.generation is unset/disabled, exactly like `_run_batch` always
+    has. Consistent with (not an exception to) SPEC.md §13's "elapsed time
+    triggers exactly one coalesced batch" invariant -- a new game
+    beginning is a reasonable trigger for one batch, the same way any
+    other elapsed span is."""
+    _run_batch(state)
+
+
 def advance_time(state: GameState, days: int) -> list[str]:
     """The coalesced choke point every elapsed-time call routes through
     (travel, rest — combat deliberately never calls this, SPEC.md §4/§6b

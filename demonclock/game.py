@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import behavior, boss, combat, crafting, db, journal, knowledge, mapview, pool, quests, rumors, setback, skills, trade
+from . import behavior, boss, combat, crafting, db, journal, knowledge, mapview, pool, quests, rumors, setback, sim, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -894,6 +894,9 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         state = new_game(name, declared_intent)
         state.generation = registry
         print(f"A new journey begins, {state.player.name}.")
+        # Warm-start batch (updates.md, resolved 2026-07-31): so day 0
+        # isn't blank -- see sim.run_warm_start_batch's own docstring.
+        sim.run_warm_start_batch(state)
 
     handlers = {
         "1": handle_move,

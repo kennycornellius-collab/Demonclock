@@ -9,6 +9,7 @@ from demonclock.sim import (
     PRICE_SHIFT_INTERVAL_DAYS,
     advance_time,
     apply_event,
+    run_warm_start_batch,
     tick_day,
 )
 from demonclock.state import GameState
@@ -579,3 +580,108 @@ def test_blizzard_demo_blocks_then_reopens_the_pass():
     advance_time(state, 6)  # now day 10, past the day-9 clear
     assert world.get_link("road", "wilds").status == "open"
     assert world.get_link("wilds", "road").status == "open"
+
+
+# -- warm-start batch (updates.md, resolved 2026-07-31) --------------------
+
+def test_run_warm_start_batch_is_a_noop_with_no_generation_registry():
+    world = make_world("a")
+    state = make_state(world, day=0)
+    assert state.generation is None
+
+    run_warm_start_batch(state)  # must not raise
+
+    assert state.world.content_pool == []
+
+
+def test_run_warm_start_batch_calls_the_director_exactly_once():
+    from demonclock.llm.config import GenerationConfig, ProviderSpec
+    from demonclock.llm.providers.mock import MockClient
+    from demonclock.llm.registry import LLMRegistry
+
+    good_intent = {
+        "responsive_weight": 0.5, "world_driven_weight": 0.5,
+        "pressure_level": 0, "salient_threads": [],
+    }
+    mock_client = MockClient(responses=[good_intent])
+    config = GenerationConfig(roles={"director": [ProviderSpec(provider="mock")]})
+    registry = LLMRegistry(config, extra_clients={"mock": mock_client})
+
+    world = make_world("a")
+    state = make_state(world, day=0)
+    state.generation = registry
+
+    run_warm_start_batch(state)
+
+    assert mock_client.call_count == 1
+
+
+def test_run_warm_start_batch_does_not_advance_the_clock_or_tick_scheduled_events():
+    world = make_world("a", "b")
+    world.add_link("a", "b", "north", travel_days=1)
+    state = make_state(world, day=0)
+    state.world.schedule_event(ScheduledEvent(
+        due_day=0, kind=EventKind.SET_NODE_STATE, payload={"node_id": "b", "state": "occupied"},
+    ))
+
+    run_warm_start_batch(state)
+
+    assert state.clock.current_day == 0
+    assert world.nodes["b"].state != "occupied"  # scheduled_events untouched -- only advance_time ticks
+    assert len(world.scheduled_events) == 1
+
+
+def test_run_warm_start_batch_populates_the_content_pool_from_both_streams():
+    # An end-to-end proof of the actual "day 0 isn't blank" payoff: a
+    # fresh, never-advanced GameState's content_pool goes from empty to
+    # populated after exactly one warm-start call, via the SAME run_batch
+    # machinery advance_time's own _run_batch already uses -- not a second
+    # generation path. Mirrors test_generation.py's own
+    # make_full_registry/quest_dict/situation_dict shapes (one MockClient
+    # per role, queued in call order) rather than a single shared client,
+    # since Director/Story/Quest are three separate role calls per stream.
+    from demonclock.canon import RequirementKind
+    from demonclock.llm.config import GenerationConfig, ProviderSpec
+    from demonclock.llm.providers.mock import MockClient
+    from demonclock.llm.registry import LLMRegistry
+
+    good_intent = {
+        "responsive_weight": 0.8, "world_driven_weight": 0.8,
+        "pressure_level": 1, "salient_threads": [],
+    }
+
+    def situation_dict(situation_id: str) -> dict:
+        return {"id": situation_id, "title": "A Rumor", "description": "Something stirs.", "node_id": "a"}
+
+    def quest_dict(quest_id: str) -> dict:
+        return {
+            "id": quest_id, "title": "Investigate", "description": "Look into it.", "reward_gold": 10,
+            "manifest": {
+                "requirements": [{"kind": RequirementKind.PLAYER_GOLD_AT_LEAST.value, "target": {"amount": 0}}],
+            },
+            "completion": {
+                "requirements": [{"kind": RequirementKind.PLAYER_GOLD_AT_LEAST.value, "target": {"amount": 0}}],
+            },
+        }
+
+    config = GenerationConfig(roles={
+        "director": [ProviderSpec(provider="director_mock")],
+        "story": [ProviderSpec(provider="story_mock")],
+        "quest": [ProviderSpec(provider="quest_mock")],
+    })
+    registry = LLMRegistry(config, extra_clients={
+        "director_mock": MockClient(responses=[good_intent]),
+        # One Situation per stream (responsive, world-driven).
+        "story_mock": MockClient(responses=[situation_dict("sit_responsive"), situation_dict("sit_world")]),
+        "quest_mock": MockClient(responses=[quest_dict("quest_responsive"), quest_dict("quest_world")]),
+    })
+
+    world = make_world("a")
+    state = make_state(world, day=0)
+    state.generation = registry
+    assert state.world.content_pool == []
+
+    run_warm_start_batch(state)
+
+    committed_ids = {item.id for item in state.world.content_pool}
+    assert committed_ids == {"quest_responsive", "quest_world"}

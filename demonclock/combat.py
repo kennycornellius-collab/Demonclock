@@ -54,6 +54,7 @@ from .skills import (
     Skill,
     StatType,
     compute_fair_cost,
+    compute_grown_magnitude,
     compute_magnitude,
     is_underpriced,
 )
@@ -280,7 +281,13 @@ def apply_skill(
     case. Only `run_group_combat`'s player-turn dispatch ever passes a
     non-empty list.
     """
-    magnitude = _magnitude(caster, skill)
+    # Growth (updates.md, resolved 2026-07-31) is applied here, at the
+    # actual point of effect resolution -- never inside _magnitude itself,
+    # which run_group_combat/boss.run_encounter's own fair-cost/
+    # is_underpriced checks also call and must keep comparing against the
+    # skill's UN-grown, as-authored power (see compute_grown_magnitude's
+    # own docstring for why that separation matters).
+    magnitude = compute_grown_magnitude(_magnitude(caster, skill), skill.use_count)
     dealt = 0
     has_damage = any(e.kind is EffectKind.DAMAGE for e in skill.effects)
     has_aoe = any(e.kind is EffectKind.AOE for e in skill.effects)
@@ -548,6 +555,13 @@ def run_group_combat(
                     fair = compute_fair_cost(skill.effects, _magnitude(fighter, skill))
                     if is_underpriced(skill, fair):
                         player.creative_mode_used = True
+                    else:
+                        # "Skills grow with use" (updates.md, resolved
+                        # 2026-07-31) -- excluded for an underpriced skill
+                        # (creative_mode_used territory) so the game's one
+                        # deliberate exploit door doesn't also compound with
+                        # a second, unrelated power source.
+                        skill.use_count += 1
                 fighter.mana = max(0, fighter.mana - skill.mana_cost)
                 if skill.cooldown > 0:
                     fighter.cooldowns[skill.id] = skill.cooldown

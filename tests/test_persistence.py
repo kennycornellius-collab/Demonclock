@@ -72,6 +72,28 @@ def test_save_then_load_round_trips_world_player_clock(tmp_path):
     conn.close()
 
 
+def test_skill_use_count_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "save.sqlite")
+    db.init_schema(conn)
+
+    world = new_default_world()
+    player = new_player(name="Astra", location_id="village")
+    player.skills = [
+        Skill(
+            id="grown_bolt", name="Grown Bolt", effects=[Effect(EffectKind.DAMAGE)],
+            attribute_type=StatType.MAGIC, mana_cost=7, base_damage=13,
+            attribute_multiplier=1.5, cooldown=2, use_count=42,
+        ),
+    ]
+    db.save_game(conn, world, player, Clock())
+
+    _, loaded_player, _ = db.load_game(conn)
+
+    assert loaded_player.skills[0].use_count == 42
+
+    conn.close()
+
+
 def test_creative_mode_used_flag_persists(tmp_path):
     conn = db.connect(tmp_path / "save.sqlite")
     db.init_schema(conn)

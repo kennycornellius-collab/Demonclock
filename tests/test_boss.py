@@ -362,6 +362,43 @@ def test_basic_attack_never_sets_creative_mode_used_in_a_boss_fight():
     assert player.creative_mode_used is False
 
 
+# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+
+def test_casting_a_fairly_priced_skill_increments_its_use_count_in_a_boss_fight():
+    firebolt = Skill(
+        id="firebolt_boss_growth", name="Firebolt", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.MAGIC, base_damage=15, attribute_multiplier=1.2,
+        mana_cost=50, cooldown=5, cast_time=5,
+    )
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=1000, hp_max=1000, defense=0)
+    encounter = Encounter(id="e", name="Tough", boss=boss, phases=[phase])
+    player = make_player(magic=10, mana=50, mana_max=50, skills=[firebolt])
+
+    run_encounter(
+        player, encounter,
+        choose_action=lambda fighter, boss, active_adds, usable: (firebolt, boss) if firebolt in usable else None,
+    )
+
+    assert firebolt.use_count == 1
+
+
+def test_casting_an_underpriced_skill_does_not_increment_its_use_count_in_a_boss_fight():
+    godmode = Skill(
+        id="godmode_boss_growth", name="One-Shot Everything", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=99999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    phase = Phase(id="p1", name="Only Phase", trigger=None, boss_immune=False)
+    boss = make_boss(hp=10, hp_max=10, defense=0)
+    encounter = Encounter(id="e", name="Weakling", boss=boss, phases=[phase])
+    player = make_player(strength=1, skills=[godmode])
+
+    run_encounter(player, encounter, choose_action=lambda fighter, boss, active_adds, usable: (godmode, boss))
+
+    assert godmode.use_count == 0
+
+
 # --- behavior-profile tracking -------------------------------------------------
 
 def test_run_encounter_records_a_combat_action_per_player_cast():

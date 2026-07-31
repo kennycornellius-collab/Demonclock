@@ -365,6 +365,71 @@ def test_basic_attack_never_sets_creative_mode_used():
     assert player.creative_mode_used is False
 
 
+# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+
+def test_apply_skill_uses_grown_magnitude_when_the_skill_has_prior_uses():
+    grown_skill = Skill(
+        id="grown", name="Grown Bolt", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=100, attribute_multiplier=1.0,
+        mana_cost=10, use_count=100,
+    )
+    fresh_skill = Skill(
+        id="fresh", name="Fresh Bolt", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=100, attribute_multiplier=1.0,
+        mana_cost=10, use_count=0,
+    )
+    caster = make_combatant(name="Caster", strength=0, agility=5, defense=0)
+    grown_target = make_combatant(name="GrownTarget", hp=100_000, hp_max=100_000, defense=0, agility=1)
+    fresh_target = make_combatant(name="FreshTarget", hp=100_000, hp_max=100_000, defense=0, agility=1)
+
+    apply_skill(caster, grown_target, grown_skill, log=[])
+    apply_skill(caster, fresh_target, fresh_skill, log=[])
+
+    grown_damage = 100_000 - grown_target.hp
+    fresh_damage = 100_000 - fresh_target.hp
+    assert grown_damage > fresh_damage
+
+
+def test_casting_a_fairly_priced_skill_increments_its_use_count():
+    firebolt = Skill(
+        id="firebolt_growth", name="Firebolt", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.MAGIC, base_damage=15, attribute_multiplier=1.2,
+        mana_cost=50, cooldown=5, cast_time=5,  # deliberately generous, at/above any plausible fair cost
+    )
+    player = make_player(magic=10, defense=0, agility=100, hp=100, hp_max=100, mana=50, mana_max=50, skills=[firebolt])
+    enemy = make_combatant(name="Target", hp=1000, hp_max=1000, defense=0, agility=1)
+
+    run_combat(player, enemy, choose_action=lambda fighter, _e, usable: firebolt if firebolt in usable else None)
+
+    assert firebolt.use_count == 1
+
+
+def test_casting_an_underpriced_skill_does_not_increment_its_use_count():
+    # is_underpriced (creative_mode_used territory) is excluded from growth
+    # entirely -- the game's one deliberate exploit door doesn't also
+    # compound with a second, unrelated power source.
+    godmode = Skill(
+        id="godmode_growth", name="One-Shot Everything", effects=[Effect(EffectKind.DAMAGE)],
+        attribute_type=StatType.STRENGTH, base_damage=99999, attribute_multiplier=1.0,
+        mana_cost=0, cooldown=0, cast_time=0,
+    )
+    player = make_player(strength=1, defense=0, agility=100, hp=100, hp_max=100, skills=[godmode])
+    enemy = make_combatant(name="Target", hp=10, hp_max=10, defense=0, agility=1)
+
+    run_combat(player, enemy, choose_action=lambda *_: godmode)
+
+    assert godmode.use_count == 0
+
+
+def test_basic_attack_never_increments_its_use_count():
+    player = make_player(strength=1, defense=0, agility=100, hp=100, hp_max=100)
+    enemy = make_combatant(name="Weakling", hp=5, hp_max=5, strength=1, agility=1, defense=0)
+
+    run_combat(player, enemy, choose_action=lambda *_: BASIC_ATTACK)
+
+    assert BASIC_ATTACK.use_count == 0
+
+
 def test_run_combat_defeat_captures_the_player():
     player = make_player(strength=1, defense=0, agility=1, hp=5, hp_max=20, gold=100)
     enemy = make_combatant(name="Brute", hp=100, hp_max=100, strength=50, agility=20, defense=0)

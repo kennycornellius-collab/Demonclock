@@ -253,6 +253,11 @@ def run_encounter(
                     fair = compute_fair_cost(skill.effects, magnitude)
                     if is_underpriced(skill, fair):
                         player.creative_mode_used = True
+                    else:
+                        # "Skills grow with use" (updates.md, resolved
+                        # 2026-07-31) -- same exclusion combat.run_group_combat
+                        # applies for an underpriced (creative_mode_used) skill.
+                        skill.use_count += 1
                 fighter.mana = max(0, fighter.mana - skill.mana_cost)
                 if skill.cooldown > 0:
                     fighter.cooldowns[skill.id] = skill.cooldown

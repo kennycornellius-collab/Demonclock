@@ -19,6 +19,7 @@ opts a save into creative mode when the skill is actually cast (see
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -88,6 +89,17 @@ class Skill:
     cooldown: int = 0
     cast_time: int = 0  # multi-turn casting — a stored field, inert this stage
     computed_fair_cost: int = 0  # the fair MANA cost at authoring time (see compute_fair_cost)
+    # "Skills grow with use" (updates.md, resolved 2026-07-31): how many
+    # times this skill has been successfully cast by its owning player,
+    # never an enemy/boss cast (see combat.run_group_combat/boss.
+    # run_encounter, the only two places that ever increment this).
+    # Magnitude-only growth reads this via compute_grown_magnitude at CAST
+    # time — mana_cost/cooldown/cast_time above are never touched by it, so
+    # a grown skill is only ever stronger, never cheaper to spam. Stays 0
+    # forever for a skill that is_underpriced (creative_mode_used territory)
+    # — see the increment call sites for why. BASIC_ATTACK (a shared
+    # singleton, never persisted) never has this incremented either.
+    use_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -102,6 +114,7 @@ class Skill:
             "cooldown": self.cooldown,
             "cast_time": self.cast_time,
             "computed_fair_cost": self.computed_fair_cost,
+            "use_count": self.use_count,
         }
 
     @classmethod
@@ -118,6 +131,7 @@ class Skill:
             cooldown=data["cooldown"],
             cast_time=data["cast_time"],
             computed_fair_cost=data.get("computed_fair_cost", 0),
+            use_count=data.get("use_count", 0),
         )
 
 
@@ -131,6 +145,35 @@ def compute_magnitude(base_damage: int, attribute_multiplier: float, stat_value:
     both `combat.apply_skill`'s live casts and the fair-cost calculator below
     derive a skill's power from this one formula, so they can never drift."""
     return int(base_damage * attribute_multiplier) + stat_value
+
+
+# "Skills grow with use" (updates.md, resolved 2026-07-31): sqrt(use_count)
+# gives deliberately UNCAPPED diminishing returns — the user's own framing
+# was "the stronger you are, the harder it is to become even stronger," not
+# a hard ceiling, so this is not clamped like CRIT_CAP/DODGE_CAP elsewhere.
+# Placeholder number — same "start rough, calibrate by feel" status as
+# EFFECT_POWER_WEIGHT/MANA_PER_POWER above (SPEC.md §11).
+GROWTH_PER_SQRT_USE = 0.05
+
+
+def compute_grown_magnitude(base_magnitude: int, use_count: int) -> int:
+    """Applies a skill's accumulated use-based growth bonus ON TOP OF an
+    already-computed base magnitude (`compute_magnitude`'s own output) —
+    called only by `combat.apply_skill` at CAST time, never by
+    `compute_fair_cost`, whose whole job is pricing a skill's UN-grown,
+    as-authored power. That separation is what keeps growth magnitude-only:
+    a skill's mana_cost/cooldown were priced fairly against its base power
+    once at creation and never get re-priced as it grows, so growth can
+    only ever make a skill hit harder, never cheaper to spam.
+
+    Multiplicative (not a flat bonus) so a powerful skill grows in absolute
+    terms proportionally to a weak one, scaled by sqrt(use_count) for
+    uncapped diminishing returns. use_count <= 0 (never cast, or a skill
+    excluded from growth because is_underpriced was True -- see combat.py's
+    increment call sites) returns base_magnitude completely unchanged."""
+    if use_count <= 0:
+        return base_magnitude
+    return round(base_magnitude * (1.0 + GROWTH_PER_SQRT_USE * math.sqrt(use_count)))
 
 
 # Relative "how strong is this effect" weights feeding the fair-cost formula.

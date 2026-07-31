@@ -19,6 +19,7 @@ from demonclock.skills import (
     SkillError,
     StatType,
     compute_fair_cost,
+    compute_grown_magnitude,
     compute_magnitude,
     generate_skill_id,
     is_underpriced,
@@ -406,6 +407,49 @@ def test_cooldown_clears_after_enough_upkeep_ticks():
 def test_compute_magnitude_matches_spec_formula():
     # base 100, mult 1.5, stat 10 -> (100*1.5)+10 = 160, SPEC.md §6b's example
     assert compute_magnitude(base_damage=100, attribute_multiplier=1.5, stat_value=10) == 160
+
+
+# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+
+def test_compute_grown_magnitude_returns_base_unchanged_at_zero_uses():
+    assert compute_grown_magnitude(100, use_count=0) == 100
+
+
+def test_compute_grown_magnitude_returns_base_unchanged_for_a_negative_use_count():
+    # Defensive: never actually produced by real play, but a skill excluded
+    # from growth should never accidentally SHRINK a magnitude either.
+    assert compute_grown_magnitude(100, use_count=-1) == 100
+
+
+def test_compute_grown_magnitude_increases_with_more_uses():
+    assert compute_grown_magnitude(100, use_count=1) > 100
+    assert compute_grown_magnitude(100, use_count=100) > compute_grown_magnitude(100, use_count=1)
+
+
+def test_compute_grown_magnitude_has_diminishing_returns():
+    # sqrt-shaped: the marginal gain from uses 1->2 must exceed the gain
+    # from uses 101->102 -- "the stronger you are, the harder it is to
+    # become even stronger" (the user's own framing from the design
+    # session), even though growth never hard-caps.
+    early_gain = compute_grown_magnitude(1000, 2) - compute_grown_magnitude(1000, 1)
+    late_gain = compute_grown_magnitude(1000, 102) - compute_grown_magnitude(1000, 101)
+    assert early_gain > late_gain > 0
+
+
+def test_compute_grown_magnitude_never_caps():
+    # Deliberately uncapped, unlike CRIT_CAP/DODGE_CAP elsewhere in this
+    # codebase -- keeps growing (even if slowly) arbitrarily far out.
+    assert compute_grown_magnitude(1000, use_count=1_000_000) > compute_grown_magnitude(1000, use_count=10_000)
+
+
+def test_skill_use_count_defaults_to_zero():
+    assert make_skill().use_count == 0
+
+
+def test_skill_dict_round_trip_preserves_a_nonzero_use_count():
+    skill = make_skill(use_count=42)
+    restored = Skill.from_dict(skill.to_dict())
+    assert restored.use_count == 42
 
 
 def test_compute_fair_cost_matches_the_formula_for_a_single_effect():

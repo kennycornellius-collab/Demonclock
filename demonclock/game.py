@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import behavior, boss, combat, crafting, db, journal, knowledge, mapview, pool, quests, rumors, setback, sim, skills, trade
+from . import behavior, boss, combat, crafting, db, factions, journal, knowledge, mapview, pool, quests, rumors, setback, sim, skills, trade
 from .actions import resolve, resolve_fast_travel
 from .clock import Clock
 from .enemies import make_enemy
@@ -78,6 +78,15 @@ GAME_OVER_MESSAGES = {
 # already sorts nearest (most confident) first, so this just shows the most
 # relevant handful instead of an unbounded dump of everything reachable.
 MAX_RUMORS_SHOWN = 5
+
+# "Faction standing: combat trigger" (updates.md, resolved 2026-07-31,
+# Chunk C): two-tier penalty against a faction-affiliated NPC -- merely
+# attacking (even if the fight is fled or lost before a kill) already
+# costs a moderate dip; an actual kill stacks the severe penalty ON TOP of
+# that (never instead of it). Same "start rough, calibrate by feel" status
+# as every other tuning constant in this codebase (SPEC.md §11).
+NPC_ATTACK_STANDING_PENALTY_TIERS = 1
+NPC_KILL_STANDING_PENALTY_TIERS = 2
 
 
 def new_game(player_name: str, declared_intent: str | None = None) -> GameState:
@@ -269,6 +278,19 @@ def _handle_talk(state: GameState, npc: NPC) -> None:
         print(reply if reply else f"{npc.name} just shrugs.")
 
 
+def _apply_npc_standing_penalty(state: GameState, npc: NPC, tiers: int, reason: str) -> None:
+    """Shifts standing with `npc.faction_id` by `tiers` (negative = more
+    hostile) and prints the resulting tier -- a silent no-op if npc has no
+    faction_id, or it doesn't resolve to a real Faction (same dangling-
+    reference posture quests._apply_faction_standing_delta already takes
+    for an AI-authored faction_standing_delta)."""
+    if npc.faction_id is None or npc.faction_id not in state.world.factions:
+        return
+    new_tier = factions.adjust_standing(state.player, npc.faction_id, tiers)
+    faction_name = state.world.factions[npc.faction_id].name
+    print(f"{reason} Your standing with {faction_name} is now {new_tier}.")
+
+
 def _handle_attack_npc(state: GameState, npc: NPC) -> None:
     """"Faction standing: combat trigger" (updates.md, resolved 2026-07-31),
     Chunk B: NPCs stay neutral -- unlike WILD_ENEMY_BY_NODE foes (which
@@ -281,13 +303,22 @@ def _handle_attack_npc(state: GameState, npc: NPC) -> None:
     run_group_combat, same as any ordinary lost fight -- nothing extra
     needed here. On VICTORY the NPC is permanently removed from world.npcs
     (no respawn, unlike a wild encounter node -- Step 10 Stage 6's
-    always-respawns rule is deliberately NOT extended to NPCs). Standing
-    consequences (the two-tier attack/kill penalty) land in Chunk C, not
-    here."""
+    always-respawns rule is deliberately NOT extended to NPCs).
+
+    Chunk C (updates.md): standing is two-tier -- merely starting the
+    fight already costs a moderate dip, applied HERE regardless of how the
+    fight ends (even a flee or a loss doesn't undo it -- you already
+    showed your hand); an actual kill stacks the severe penalty ON TOP,
+    checked further down against the real result."""
     print(f"Attack {npc.name}? There's no undoing this.")
     choice = input("1) Attack  2) Leave\n> ").strip()
     if choice != "1":
         return
+
+    _apply_npc_standing_penalty(
+        state, npc, -NPC_ATTACK_STANDING_PENALTY_TIERS,
+        f"Word of the attack on {npc.name} spreads.",
+    )
 
     combatant = combatant_for_npc(npc)
 
@@ -320,6 +351,10 @@ def _handle_attack_npc(state: GameState, npc: NPC) -> None:
 
     if result is combat.CombatResult.VICTORY:
         state.world.remove_npc(npc.id)
+        _apply_npc_standing_penalty(
+            state, npc, -NPC_KILL_STANDING_PENALTY_TIERS,
+            f"Killing {npc.name} will not be forgotten.",
+        )
 
 
 def _handle_craft(state: GameState, node) -> None:

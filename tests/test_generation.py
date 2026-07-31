@@ -18,6 +18,7 @@ from demonclock.llm.config import GenerationConfig, ProviderSpec
 from demonclock.llm.providers.mock import MockClient
 from demonclock.llm.registry import LLMRegistry
 from demonclock.models import NPC, Faction, Node
+from demonclock.npc_combat import NPCArchetype
 from demonclock.pool import GeneratedItem
 from demonclock.player import new_player
 from demonclock.state import GameState
@@ -117,7 +118,7 @@ def quest_dict_needing_new_npc(quest_id: str = "quest1", npc_hint: str = "a reti
 def new_npc_dict(npc_id: str = "old_miller") -> dict:
     return {
         "id": npc_id, "name": "Old Miller", "description": "A weathered veteran of the northern watch.",
-        "tags": ["retired", "guard"],
+        "tags": ["retired"], "archetype": "guard",
     }
 
 
@@ -618,23 +619,56 @@ def test_run_npc_parses_a_well_formed_new_npc():
 
     assert new_npc == NewNPC(
         id="old_miller", name="Old Miller",
-        description="A weathered veteran of the northern watch.", tags=["retired", "guard"],
+        description="A weathered veteran of the northern watch.", tags=["retired"],
+        archetype=NPCArchetype.GUARD,
     )
 
 
-def test_new_npc_schema_requires_all_four_fields():
-    assert set(NEW_NPC_SCHEMA["required"]) == {"id", "name", "description", "tags"}
+def test_new_npc_schema_requires_all_five_fields():
+    assert set(NEW_NPC_SCHEMA["required"]) == {"id", "name", "description", "tags", "archetype"}
+
+
+def test_new_npc_schema_constrains_archetype_to_a_real_enum_value():
+    # Same "enum, never free text" discipline as skills.EffectKind/
+    # events.EventKind -- a generated NPC can only ever land on a real
+    # npc_combat.NPCArchetype, never a hallucinated combat-stat tier.
+    assert set(NEW_NPC_SCHEMA["properties"]["archetype"]["enum"]) == {a.value for a in NPCArchetype}
+
+
+def test_new_npc_defaults_to_civilian_archetype_when_omitted():
+    # NewNPC's own dataclass default (a hand-built NewNPC in a test/older
+    # payload shape that omits archetype entirely) -- NOT the same as
+    # run_npc/from_dict, which requires it via the schema.
+    assert NewNPC(id="x", name="X", description="").archetype is NPCArchetype.CIVILIAN
 
 
 def test_materialize_npc_adds_it_to_the_named_node():
     state = make_state()
-    new_npc = NewNPC(id="old_miller", name="Old Miller", description="A veteran.", tags=["guard"])
+    new_npc = NewNPC(id="old_miller", name="Old Miller", description="A veteran.", tags=["retired"], archetype=NPCArchetype.GUARD)
 
     ok = materialize_npc(state, "village", new_npc)
 
     assert ok is True
     assert state.world.npcs["old_miller"].location_id == "village"
     assert state.world.npcs["old_miller"].name == "Old Miller"
+
+
+def test_materialize_npc_appends_the_archetype_as_a_tag_when_not_already_present():
+    state = make_state()
+    new_npc = NewNPC(id="old_miller", name="Old Miller", description="", tags=["retired"], archetype=NPCArchetype.GUARD)
+
+    materialize_npc(state, "village", new_npc)
+
+    assert state.world.npcs["old_miller"].tags == ["retired", "guard"]
+
+
+def test_materialize_npc_does_not_duplicate_the_archetype_tag_when_already_present():
+    state = make_state()
+    new_npc = NewNPC(id="old_miller", name="Old Miller", description="", tags=["retired", "guard"], archetype=NPCArchetype.GUARD)
+
+    materialize_npc(state, "village", new_npc)
+
+    assert state.world.npcs["old_miller"].tags == ["retired", "guard"]
 
 
 def test_materialize_npc_refuses_to_overwrite_an_existing_npc_id():

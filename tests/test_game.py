@@ -494,6 +494,69 @@ def test_handle_attack_npc_flee_leaves_the_npc_alive(monkeypatch, capsys):
     assert "miller_hana" in state.world.npcs
 
 
+# -- standing consequences (Chunk C, updates.md) --------------------------
+
+def test_handle_attack_npc_dips_standing_the_moment_combat_starts_even_on_flee(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]  # faction_id="merchants"
+    monkeypatch.setattr(game.combat, "run_group_combat", lambda *a, **k: (CombatResult.FLED, ["stub log"]))
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    # neutral (default) -1 tier = unfriendly -- costs standing even though
+    # the fight was fled, never actually landing a kill.
+    assert state.player.faction_standing["merchants"] == "unfriendly"
+    assert "Your standing with The Merchants' Guild is now unfriendly." in capsys.readouterr().out
+
+
+def test_handle_attack_npc_defeat_still_dips_standing(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    monkeypatch.setattr(game.combat, "run_group_combat", lambda *a, **k: (CombatResult.DEFEAT, ["stub log"]))
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    assert state.player.faction_standing["merchants"] == "unfriendly"
+
+
+def test_handle_attack_npc_victory_stacks_the_severe_penalty_on_top_of_the_attack_dip(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    monkeypatch.setattr(game.combat, "run_group_combat", lambda *a, **k: (CombatResult.VICTORY, ["stub log"]))
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    # neutral -1 (attack) -2 (kill) = 3 tiers down, clamped at the bottom: hostile.
+    assert state.player.faction_standing["merchants"] == "hostile"
+    out = capsys.readouterr().out
+    assert "Killing Hana the Miller will not be forgotten." in out
+    assert out.count("Your standing with The Merchants' Guild is now") == 2
+
+
+def test_handle_attack_npc_leaving_before_combat_never_touches_standing(monkeypatch, capsys):
+    state = make_default_state(location_id="village")
+    npc = state.world.npcs["miller_hana"]
+    feed_inputs(monkeypatch, ["2"])  # Leave
+
+    game._handle_attack_npc(state, npc)
+
+    assert state.player.faction_standing == {}
+
+
+def test_handle_attack_npc_against_an_unaffiliated_npc_never_touches_standing(monkeypatch, capsys):
+    state = make_default_state(location_id="market")
+    npc = state.world.npcs["market_warden_oskar"]  # no faction_id
+    monkeypatch.setattr(game.combat, "run_group_combat", lambda *a, **k: (CombatResult.VICTORY, ["stub log"]))
+    feed_inputs(monkeypatch, ["1"])
+
+    game._handle_attack_npc(state, npc)
+
+    assert state.player.faction_standing == {}
+
+
 def test_handle_attack_npc_reprompts_on_an_invalid_skill_choice_instead_of_defaulting(monkeypatch, capsys):
     state = make_default_state(location_id="village")
     npc = state.world.npcs["miller_hana"]

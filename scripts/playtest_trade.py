@@ -1,48 +1,21 @@
 #!/usr/bin/env python
-"""Automated playtest bot: drives a real GameState through the real game.py
-handler functions (the same code a human player's menu choices call), with
-randomized decisions standing in for a human, and writes a full turn-by-turn
-transcript to a log file. This is integration-level coverage the pytest
-suite deliberately doesn't do -- every existing test exercises one module in
-isolation; nothing plays a whole session end to end (Move/Rest/Trade/Fight/
-Craft/Talk/Quests/Skills/Atlas/free-text, all together, with the generation
-pipeline actually firing).
+"""TRADE-BIASED variant of scripts/playtest.py -- see that file's own
+docstring for the shared design. This copy only changes the bot's DECISION
+weights, tuned to reach and use the economy:
+  - `interact` and `atlas` are heavily favored (reach a trade-hub node, then
+    travel between markets, since profit is geographic per trade.py's own
+    design -- prices differ by node, not by direction within one node).
+  - `Trade` is weighted well above other interact options (Talk/Craft/Attack)
+    when several are available at the same node.
+  - A brand-new game starts with a modest gold bootstrap (300) -- the base
+    script's default 0 starting gold meant Buy could never succeed at all,
+    so a plain random run never generates any real economic activity. This
+    is a test-harness-only change (does not touch demonclock/player.py's
+    real starting gold), clearly logged so it's never confused with a
+    balance change to the actual game.
 
-How it drives the game: it never touches the top-level menu dispatch in
-game.run() (that's a 10-line dict lookup already covered by
-tests/test_game.py). Instead each "turn" calls one game.handle_*() function
-directly -- the equivalent of a player already having pressed a menu number
--- with `input()` monkeypatched to a decision function that inspects the
-text just printed (and the prompt itself) to figure out what menu is being
-shown, then picks a weighted-random valid choice (occasionally an invalid
-one on purpose, to exercise the bounds-checking/reprompt paths). All
-captured stdout plus every input()/response pair is written to the log.
-
-AI generation: unchanged from real play -- GenerationConfig.from_env() picks
-up the real GEMINI_API_KEY from .env, exactly like game.run() does, so a run
-of this script shows up as real traffic in AI Studio. The "player" (which
-menu number gets picked each turn) is a separate concern from "what
-generates game content" -- only the player is randomized/bot-driven here;
-generation is the same production Gemini path, untouched. (A real LLM
-making the PLAYER's per-turn decisions, instead of the weighted-random Bot
-below, is a plausible future mode -- deliberately not built until actually
-needed, to avoid the extra complexity/cost of an LLM call per menu prompt.)
-
-Determinism note: --seed reproduces the BOT's own decisions (which action,
-which menu number, which free-text line) but NOT combat RNG or real AI
-output -- game.py's own combat handlers construct their own fresh
-random.Random() internally (by design, see combat.py), and this script
-doesn't reach in to change that.
-
-Usage:
-    python scripts/playtest.py --days 60
-    python scripts/playtest.py --days 20 --no-ai          # fast, free, offline smoke test
-    python scripts/playtest.py --load scripts/playtest_output/playtest.save.sqlite --days 120
-
-Real Gemini calls cost nothing on the free tier but ARE rate-limited (see
-llm/config.py's DEFAULT_GEMINI_MODEL_CHAIN comments) -- demonclock's own
-per-role provider fallback chain and per-batch graceful degradation already
-handle that; this script adds no extra throttling of its own on top.
+Usage: same flags as playtest.py, e.g.
+    python scripts/playtest_trade.py --days 60
 """
 from __future__ import annotations
 
@@ -70,17 +43,11 @@ from demonclock.llm.config import GenerationConfig
 from demonclock.llm.registry import LLMRegistry
 from demonclock.state import GameState
 
+STARTING_GOLD_BOOTSTRAP = 300  # test-harness only -- see module docstring
+
 
 # === Bot decision-making ====================================================
 
-# Not anchored to line-start on purpose: some menus print one numbered item
-# per line (goods lists, target pickers), but others embed several numbered
-# items on ONE line inside the input() prompt itself (e.g. _handle_trade's
-# "1) Buy  2) Sell  3) Leave"). A `^...$`-per-line regex only ever captures
-# the FIRST item on a multi-item line (confirmed via a real repro: it
-# returned a single garbled ('1', 'Buy  2) Sell  3) Leave') match) -- every
-# option after the first was structurally unreachable. Finding each "N)"
-# marker by position instead, regardless of line breaks, catches both shapes.
 MENU_ITEM_RE = re.compile(r"(\d+)\)\s*")
 
 
@@ -118,9 +85,11 @@ CHARACTER_NAMES = ["Corin", "Mira", "Tobias", "Sable", "Ezra", "Wren", "Halric",
 def _weight_for_label(label: str) -> float:
     lowered = label.lower()
     if label.startswith("Attack "):
-        return 0.08  # killing an NPC is permanent -- rare, not the bot's default move
+        return 0.08  # killing an NPC is permanent -- rare, not what this variant is testing
+    if label == "Trade":
+        return 3.0  # trade bias: prefer Trade over Talk/Craft when several options coexist
     if any(k in lowered for k in ("leave", "cancel", "back", "flee", "something else")):
-        return 0.35  # don't let the bot just bail on everything by default
+        return 0.15  # rarely bail before actually buying/selling
     return 1.0
 
 
@@ -165,7 +134,9 @@ class Bot:
         if "which direction" in p:
             return self._pick_direction()
         if "quantity:" in p:
-            return "" if self.rng.random() < 0.25 else str(self.rng.randint(1, 6))
+            # Trade bias: bigger, more consistent quantities than the base
+            # bot's 1-6 -- exercises trade.py's TRADE_IMPACT_CAP path more.
+            return "" if self.rng.random() < 0.10 else str(self.rng.randint(2, 15))
         if "name your skill" in p:
             return "" if self.rng.random() < 0.30 else self.rng.choice(SKILL_NAMES)
         if "base power" in p:
@@ -200,17 +171,19 @@ class Bot:
 
 
 # === The turn loop ==========================================================
+# Trade-biased weights: interact (the gateway to Trade) and atlas (travel
+# between differently-priced markets) dominate; combat/quests are rare here.
 
 ACTIONS = [
-    ("move", 3.0, handle_move),
-    ("rest", 3.0, handle_rest),
-    ("interact", 4.0, handle_interact),
-    ("atlas", 1.5, handle_atlas),
-    ("ask_around", 1.5, handle_ask_around),
-    ("quests", 2.5, handle_quests),
-    ("skills", 0.8, handle_skills),
-    ("journal", 0.5, handle_journal),
-    ("free_text", 1.2, handle_free_text),
+    ("move", 2.0, handle_move),
+    ("rest", 0.8, handle_rest),
+    ("interact", 7.0, handle_interact),
+    ("atlas", 2.5, handle_atlas),
+    ("ask_around", 0.3, handle_ask_around),
+    ("quests", 0.5, handle_quests),
+    ("skills", 0.3, handle_skills),
+    ("journal", 0.2, handle_journal),
+    ("free_text", 0.3, handle_free_text),
 ]
 
 RELOAD_CHECK_INTERVAL_DAYS = 15
@@ -247,9 +220,6 @@ def run_playtest(args) -> None:
     seed = args.seed if args.seed is not None else int(time.time() * 1000) % (2**31)
     rng = random.Random(seed)
 
-    # Exactly game.run()'s own setup: a real GEMINI_API_KEY (env var or
-    # .env) is picked up here the same way, and a missing key just leaves
-    # generation disabled, same as an unconfigured real game.
     gen_config = GenerationConfig(roles={}, api_keys={}) if args.no_ai else GenerationConfig.from_env()
     registry = LLMRegistry(gen_config)
 
@@ -258,7 +228,7 @@ def run_playtest(args) -> None:
 
     with open(log_path, "w", encoding="utf-8") as logf:
         ai_mode = "off (--no-ai)" if args.no_ai else ("gemini (real, via .env)" if registry.enabled else "gemini (UNCONFIGURED -- no GEMINI_API_KEY found, generation will no-op)")
-        _log(logf, f"=== Demonclock automated playtest === {datetime.now(timezone.utc).isoformat()}")
+        _log(logf, f"=== Demonclock automated playtest [TRADE-BIASED] === {datetime.now(timezone.utc).isoformat()}")
         _log(logf, f"seed={seed} days_target={args.days} ai_mode={ai_mode}")
         _log(logf, f"save_path={save_path} load_path={args.load or '(new game)'}")
         _log(logf, "")
@@ -273,7 +243,9 @@ def run_playtest(args) -> None:
             declared_intent = rng.choice(DECLARED_INTENTS)
             state = new_game(name, declared_intent)
             state.generation = registry
+            state.player.gold = STARTING_GOLD_BOOTSTRAP
             _log(logf, f"New game: name={name!r} declared_intent={declared_intent!r}")
+            _log(logf, f"Test-harness gold bootstrap: starting gold set to {STARTING_GOLD_BOOTSTRAP} (trade variant only).")
             sim.run_warm_start_batch(state)
             _log(logf, f"Warm-start batch complete. Pool size={len(state.world.content_pool)}")
         _log(logf, "")
@@ -383,11 +355,15 @@ def _write_summary(logf, state, seed, turn, action_counts, exceptions, registry,
     _log(logf, f"  location={p.location_id}  captured={p.captured}  game_over={p.game_over}")
     _log(logf, f"  skills learned: {[s.name for s in p.skills]}")
     _log(logf, f"  creative_mode_used={p.creative_mode_used}")
+    _log(logf, f"  inventory: {[(i.item_id, i.quantity) for i in p.inventory]}")
     _log(logf, f"  accepted_quests={len(p.accepted_quests)}  journal_entries={len(p.journal)}")
     _log(logf, f"  faction_standing={p.faction_standing}")
     _log(logf, "")
     _log(logf, f"World: {len(w.nodes)} nodes, {occupied} occupied, content_pool={len(w.content_pool)}, "
                 f"event_log={len(w.event_log)}, npcs={len(w.npcs)}")
+    for node in w.nodes.values():
+        if node.prices:
+            _log(logf, f"  {node.name} prices: {node.prices}")
     _log(logf, "")
     _log(logf, f"AI: {'enabled (real Gemini)' if registry.enabled else 'disabled/unconfigured'}")
     _log(logf, "")
@@ -408,7 +384,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--days", type=int, default=60, help="simulate until the in-game clock reaches this day (default: 60)")
     parser.add_argument("--seed", type=int, default=None, help="seed for the bot's own decisions (default: random, always logged)")
-    parser.add_argument("--save", default="scripts/playtest_output/playtest.save.sqlite", help="save file path")
+    parser.add_argument("--save", default="scripts/playtest_output/trade.save.sqlite", help="save file path")
     parser.add_argument("--load", default=None, help="load an existing save from this path instead of starting a new game")
     parser.add_argument("--log", default=None, help="log file path (default: timestamped under scripts/playtest_output/)")
     parser.add_argument("--no-ai", action="store_true", help="disable AI generation entirely (fast, free, offline smoke test)")
@@ -416,7 +392,7 @@ def main() -> None:
 
     if args.log is None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        args.log = f"scripts/playtest_output/playtest_{timestamp}.log.txt"
+        args.log = f"scripts/playtest_output/trade_{timestamp}.log.txt"
 
     run_playtest(args)
 

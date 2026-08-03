@@ -1,48 +1,20 @@
 #!/usr/bin/env python
-"""Automated playtest bot: drives a real GameState through the real game.py
-handler functions (the same code a human player's menu choices call), with
-randomized decisions standing in for a human, and writes a full turn-by-turn
-transcript to a log file. This is integration-level coverage the pytest
-suite deliberately doesn't do -- every existing test exercises one module in
-isolation; nothing plays a whole session end to end (Move/Rest/Trade/Fight/
-Craft/Talk/Quests/Skills/Atlas/free-text, all together, with the generation
-pipeline actually firing).
+"""COMBAT-BIASED variant of scripts/playtest.py -- see that file's own
+docstring for the shared design (how it drives game.py, AI generation stays
+real Gemini, determinism scope, etc.). This copy only changes the bot's
+DECISION weights, tuned to reach fights and stay in them:
+  - `interact` is heavily favored over other actions, and once at a node
+    with a fight available, "Flee"/"Leave" labels are weighted much lower
+    than the base script's default (rarely bails mid-fight).
+  - `_pick_direction` prefers a neighbor tagged "dangerous" (the seeded
+    world's wilds/wild-enemy nodes) when one is known, instead of picking
+    uniformly among exits -- the base bot's plain-random movement was why a
+    real 60-day run found combat exactly ONCE (see update_progress.md):
+    the invasion sealed the only wild-enemy node's access road before the
+    unbiased bot wandered back that way.
 
-How it drives the game: it never touches the top-level menu dispatch in
-game.run() (that's a 10-line dict lookup already covered by
-tests/test_game.py). Instead each "turn" calls one game.handle_*() function
-directly -- the equivalent of a player already having pressed a menu number
--- with `input()` monkeypatched to a decision function that inspects the
-text just printed (and the prompt itself) to figure out what menu is being
-shown, then picks a weighted-random valid choice (occasionally an invalid
-one on purpose, to exercise the bounds-checking/reprompt paths). All
-captured stdout plus every input()/response pair is written to the log.
-
-AI generation: unchanged from real play -- GenerationConfig.from_env() picks
-up the real GEMINI_API_KEY from .env, exactly like game.run() does, so a run
-of this script shows up as real traffic in AI Studio. The "player" (which
-menu number gets picked each turn) is a separate concern from "what
-generates game content" -- only the player is randomized/bot-driven here;
-generation is the same production Gemini path, untouched. (A real LLM
-making the PLAYER's per-turn decisions, instead of the weighted-random Bot
-below, is a plausible future mode -- deliberately not built until actually
-needed, to avoid the extra complexity/cost of an LLM call per menu prompt.)
-
-Determinism note: --seed reproduces the BOT's own decisions (which action,
-which menu number, which free-text line) but NOT combat RNG or real AI
-output -- game.py's own combat handlers construct their own fresh
-random.Random() internally (by design, see combat.py), and this script
-doesn't reach in to change that.
-
-Usage:
-    python scripts/playtest.py --days 60
-    python scripts/playtest.py --days 20 --no-ai          # fast, free, offline smoke test
-    python scripts/playtest.py --load scripts/playtest_output/playtest.save.sqlite --days 120
-
-Real Gemini calls cost nothing on the free tier but ARE rate-limited (see
-llm/config.py's DEFAULT_GEMINI_MODEL_CHAIN comments) -- demonclock's own
-per-role provider fallback chain and per-batch graceful degradation already
-handle that; this script adds no extra throttling of its own on top.
+Usage: same flags as playtest.py, e.g.
+    python scripts/playtest_combat.py --days 60
 """
 from __future__ import annotations
 
@@ -73,14 +45,6 @@ from demonclock.state import GameState
 
 # === Bot decision-making ====================================================
 
-# Not anchored to line-start on purpose: some menus print one numbered item
-# per line (goods lists, target pickers), but others embed several numbered
-# items on ONE line inside the input() prompt itself (e.g. _handle_trade's
-# "1) Buy  2) Sell  3) Leave"). A `^...$`-per-line regex only ever captures
-# the FIRST item on a multi-item line (confirmed via a real repro: it
-# returned a single garbled ('1', 'Buy  2) Sell  3) Leave') match) -- every
-# option after the first was structurally unreachable. Finding each "N)"
-# marker by position instead, regardless of line breaks, catches both shapes.
 MENU_ITEM_RE = re.compile(r"(\d+)\)\s*")
 
 
@@ -118,9 +82,11 @@ CHARACTER_NAMES = ["Corin", "Mira", "Tobias", "Sable", "Ezra", "Wren", "Halric",
 def _weight_for_label(label: str) -> float:
     lowered = label.lower()
     if label.startswith("Attack "):
-        return 0.08  # killing an NPC is permanent -- rare, not the bot's default move
+        return 0.08  # killing an NPC is still permanent -- rare even here
+    if label == "Fight" or lowered.startswith("fight"):
+        return 2.5
     if any(k in lowered for k in ("leave", "cancel", "back", "flee", "something else")):
-        return 0.35  # don't let the bot just bail on everything by default
+        return 0.10  # combat bias: rarely bail out of a fight or a wild encounter
     return 1.0
 
 
@@ -158,6 +124,13 @@ class Bot:
             return ""
         if self.rng.random() < 0.08:
             return self.rng.choice(["up", "down", "sideways", "nowhere"])  # exercise the honest-rejection path
+        # Combat bias: head for a "dangerous"-tagged neighbor (wild-enemy
+        # territory) when one is reachable, instead of picking uniformly --
+        # this is the bot metagaming with full world truth on purpose, since
+        # the point here is to reliably reach fights, not simulate fog of war.
+        dangerous = [link for link in links if "dangerous" in self.state.world.nodes[link.to_id].tags]
+        if dangerous and self.rng.random() < 0.70:
+            return self.rng.choice(dangerous).direction
         return self.rng.choice(links).direction
 
     def _decide_response(self, prompt: str, combined: str) -> str:
@@ -200,17 +173,20 @@ class Bot:
 
 
 # === The turn loop ==========================================================
+# Combat-biased weights: interact (the gateway to Fight) dominates; movement
+# stays present enough to actually reach a dangerous node; economy/social
+# actions are deliberately rare here (that's what the other two variants are for).
 
 ACTIONS = [
-    ("move", 3.0, handle_move),
-    ("rest", 3.0, handle_rest),
-    ("interact", 4.0, handle_interact),
-    ("atlas", 1.5, handle_atlas),
-    ("ask_around", 1.5, handle_ask_around),
-    ("quests", 2.5, handle_quests),
-    ("skills", 0.8, handle_skills),
-    ("journal", 0.5, handle_journal),
-    ("free_text", 1.2, handle_free_text),
+    ("move", 2.5, handle_move),
+    ("rest", 1.0, handle_rest),
+    ("interact", 7.0, handle_interact),
+    ("atlas", 1.0, handle_atlas),
+    ("ask_around", 0.3, handle_ask_around),
+    ("quests", 0.5, handle_quests),
+    ("skills", 1.5, handle_skills),
+    ("journal", 0.2, handle_journal),
+    ("free_text", 0.3, handle_free_text),
 ]
 
 RELOAD_CHECK_INTERVAL_DAYS = 15
@@ -247,9 +223,6 @@ def run_playtest(args) -> None:
     seed = args.seed if args.seed is not None else int(time.time() * 1000) % (2**31)
     rng = random.Random(seed)
 
-    # Exactly game.run()'s own setup: a real GEMINI_API_KEY (env var or
-    # .env) is picked up here the same way, and a missing key just leaves
-    # generation disabled, same as an unconfigured real game.
     gen_config = GenerationConfig(roles={}, api_keys={}) if args.no_ai else GenerationConfig.from_env()
     registry = LLMRegistry(gen_config)
 
@@ -258,7 +231,7 @@ def run_playtest(args) -> None:
 
     with open(log_path, "w", encoding="utf-8") as logf:
         ai_mode = "off (--no-ai)" if args.no_ai else ("gemini (real, via .env)" if registry.enabled else "gemini (UNCONFIGURED -- no GEMINI_API_KEY found, generation will no-op)")
-        _log(logf, f"=== Demonclock automated playtest === {datetime.now(timezone.utc).isoformat()}")
+        _log(logf, f"=== Demonclock automated playtest [COMBAT-BIASED] === {datetime.now(timezone.utc).isoformat()}")
         _log(logf, f"seed={seed} days_target={args.days} ai_mode={ai_mode}")
         _log(logf, f"save_path={save_path} load_path={args.load or '(new game)'}")
         _log(logf, "")
@@ -408,7 +381,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--days", type=int, default=60, help="simulate until the in-game clock reaches this day (default: 60)")
     parser.add_argument("--seed", type=int, default=None, help="seed for the bot's own decisions (default: random, always logged)")
-    parser.add_argument("--save", default="scripts/playtest_output/playtest.save.sqlite", help="save file path")
+    parser.add_argument("--save", default="scripts/playtest_output/combat.save.sqlite", help="save file path")
     parser.add_argument("--load", default=None, help="load an existing save from this path instead of starting a new game")
     parser.add_argument("--log", default=None, help="log file path (default: timestamped under scripts/playtest_output/)")
     parser.add_argument("--no-ai", action="store_true", help="disable AI generation entirely (fast, free, offline smoke test)")
@@ -416,7 +389,7 @@ def main() -> None:
 
     if args.log is None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        args.log = f"scripts/playtest_output/playtest_{timestamp}.log.txt"
+        args.log = f"scripts/playtest_output/combat_{timestamp}.log.txt"
 
     run_playtest(args)
 

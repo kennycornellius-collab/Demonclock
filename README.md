@@ -57,9 +57,13 @@ simulation to run through — never the other way around.
 - Quests: pulled from a generated content pool, accepted, and turned in once you've
   actually met the objective.
 - NPCs with hybrid dialogue — a few generated conversation options plus a free-text
-  line, always flavor, never state-changing.
-- Factions and standing (the data model exists; nothing moves it yet).
+  line, always flavor, never state-changing. NPCs are also real combat targets:
+  attacking (or killing) one is permanent and moves your standing with their faction.
+- Factions and standing — quest turn-ins, trading at a faction-affiliated node, and
+  attacking/killing an affiliated NPC all move it.
 - Crafting at workshop-tagged locations from a small fixed recipe table.
+- A player-facing journal recapping your own story so far (places first visited,
+  fights won/lost, quests completed, captures/escapes) — a pure read, no input needed.
 - An optional generation layer (Director → Story → Quest → Places → Flavor agents)
   that fills the content pool and colors the world while you're away — every
   generated item is checked against live world state before it's ever shown to you,
@@ -97,20 +101,24 @@ provider wired up today; the provider layer is written to make adding another on
 
 Every turn offers: **Move** / **Interact** / **Inventory** / **Rest** /
 **Something else…** / **Skills** / **Atlas** / **Ask around** / **Quests** /
-**Save & Quit**.
+**Journal** / **Save & Quit**.
 
 - **Move** lists every exit from where you're standing — open ones by destination,
   blocked ones as `???` with the reason why.
 - **Interact** offers whatever's actually present at that node: Trade, Fight, Talk to
-  an NPC, Craft — a location with more than one shows a picker; one thing runs
-  directly.
-- **Something else…** opens free text, the one place the parser runs — deterministic
-  verb matching only for now; an LLM fallback for genuinely novel phrasing is a
-  documented TODO, not wired in yet.
+  or Attack an NPC, Craft — a location with more than one shows a picker; one thing
+  runs directly.
+- **Something else…** opens free text, the one place the parser runs —
+  deterministic verb matching first; if that doesn't match, an AI fallback (when
+  configured) picks the closest action actually available to you right now rather
+  than inventing one — it'll never claim to do something the game doesn't support,
+  even if your sentence describes something plausible-sounding.
 - **Atlas** and **Ask around** are how you reduce fog of war — by belief and by
   rumor, respectively — never by peeking at world truth directly.
 - **Quests** shows what you've accepted and lets you turn one in once its objective
   actually holds.
+- **Journal** is a pure read — your own story so far, recorded automatically as
+  things happen.
 
 ## Running the tests
 

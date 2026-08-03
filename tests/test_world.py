@@ -170,7 +170,7 @@ def test_npcs_at_returns_empty_list_for_a_node_with_no_npcs():
 
 
 def test_remove_npc_deletes_it_permanently():
-    # "Faction standing: combat trigger" (updates.md, resolved 2026-07-31,
+    # "Faction standing: combat trigger" (resolved 2026-07-31,
     # Chunk B): killing an NPC is permanent -- no respawn.
     world = make_world("a")
     world.add_npc(NPC(id="hana", name="Hana", location_id="a"))

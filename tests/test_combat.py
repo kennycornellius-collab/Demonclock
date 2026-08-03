@@ -279,7 +279,7 @@ def test_run_combat_is_deterministic_given_a_matching_seed():
     # Step 9: run_combat now defaults to a fresh, unseeded random.Random(),
     # so two calls only reproduce the same fight if given matching seeds --
     # this is the "a fixed seed must still reproduce a fixed fight"
-    # guarantee SPEC.md §6b asks for, not "combat has no RNG at all."
+    # guarantee the combat-RNG design asks for, not "combat has no RNG at all."
     def make_matchup():
         return make_player(strength=15, defense=5, agility=10, hp=60, hp_max=60), make_enemy("bramblewood_wolf")
 
@@ -312,7 +312,7 @@ def test_run_combat_threads_rng_through_to_the_enemys_attacks_too():
 
 def test_casting_an_underpriced_skill_sets_creative_mode_used():
     # Huge power at 0 mana/cooldown/cast_time — the explicit cost-zeroing act
-    # SPEC.md §6b treats as the deliberate opt-out gesture.
+    # this design treats as the deliberate opt-out gesture.
     godmode = Skill(
         id="godmode",
         name="One-Shot Everything",
@@ -365,7 +365,7 @@ def test_basic_attack_never_sets_creative_mode_used():
     assert player.creative_mode_used is False
 
 
-# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+# -- skill growth (resolved 2026-07-31) -------------------------------------
 
 def test_apply_skill_uses_grown_magnitude_when_the_skill_has_prior_uses():
     grown_skill = Skill(
@@ -701,7 +701,7 @@ def test_run_combat_wording_is_unchanged_by_the_run_group_combat_refactor():
     assert log[-1] == "You defeated the Weakling!"
 
 
-# --- _enemies_desc: proper_name skips the "the" prefix (updates.md "Open
+# --- _enemies_desc: proper_name skips the "the" prefix ("Open
 # bugs," fixed 2026-07-31) -------------------------------------------------
 
 def test_enemies_desc_skips_the_prefix_for_a_proper_named_combatant():

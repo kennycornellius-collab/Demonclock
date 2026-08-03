@@ -105,7 +105,7 @@ def test_check_escape_when_not_captured_is_a_no_op():
     assert check_escape(player, current_day=999) == []
 
 
-# -- journal recording (updates.md's player-facing journal/recap) ----------
+# -- journal recording (the player-facing journal/recap) --------------------
 
 def test_capture_player_records_a_journal_entry():
     player = make_player(gold=100)

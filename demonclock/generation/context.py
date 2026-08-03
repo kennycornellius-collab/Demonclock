@@ -1,5 +1,5 @@
 """Assembles the bounded retrieved slice every generation-pipeline agent
-reads from (SPEC.md §7/§9's "generation always runs against live entities +
+reads from (the "generation always runs against live entities +
 relevant retrieved history, never the entire accumulated content"). This is
 the single place that invariant is enforced for the batch pipeline -- Director
 (Chunk B), Story/Quest (Chunk C), and Places (Chunk D) all read from the dict
@@ -55,7 +55,7 @@ def build_batch_context(state: GameState) -> dict:
             {"id": faction.id, "name": faction.name, "description": faction.description}
             for faction in world.factions.values()
         ],
-        # NPC-quest link follow-up (updates.md, surfaced 2026-07-29): NPCs at
+        # NPC-quest link follow-up (surfaced 2026-07-29): NPCs at
         # the current node + its immediate neighbors, same bound already
         # applied to nodes -- without this, the Quest agent had no
         # legitimate NPC id to ever set giver_npc_id (quest.py) to other

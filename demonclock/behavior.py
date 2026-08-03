@@ -1,6 +1,6 @@
-"""BehaviorProfile (SPEC.md §5, world-sim Stage 4): pure-code action counters
+"""BehaviorProfile (world-sim Stage 4): pure-code action counters
 with exponential decay, feeding a derived_role_hint string. The engine only
-*watches* here — no AI. The Director (not yet built, SPEC.md §7) will be the
+*watches* here — no AI. The Director will be the
 first actual reader of this data at batch-generation time; until then it's
 background bookkeeping, surfaced to the player only as a minor inventory-screen
 flavor line.
@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# SPEC.md §5: "start with ×0.97/day, half-life ~= 23 in-game days; tune in
+# "Start with ×0.97/day, half-life ~= 23 in-game days; tune in
 # play" — same "start rough, calibrate by feel" status as combat.py's
-# DOT_DURATION etc. and skills.py's fair-cost constants (SPEC.md §11).
+# DOT_DURATION etc. and skills.py's fair-cost constants.
 DECAY_FACTOR = 0.97
 
 # Below this, a decaying counter is treated as fully cooled off rather than
@@ -29,7 +29,7 @@ RECENT_LOCATIONS_MAX = 5
 ROLE_HINT_THRESHOLD = 3.0
 
 # The exact string derived_role_hint returns once no threshold has been
-# crossed yet -- effective_role_hint (updates.md, "declared intent," resolved
+# crossed yet -- effective_role_hint ("declared intent," resolved
 # 2026-07-31) checks against this literal to decide whether real accrued
 # behavior has said anything yet, or whether a declared_intent fallback
 # should be used instead.
@@ -97,7 +97,7 @@ def tick(profile: BehaviorProfile, current_gold: int) -> None:
 
 
 def derived_role_hint(profile: BehaviorProfile) -> str:
-    """Simple threshold tags over the decayed counters (SPEC.md §5's own
+    """Simple threshold tags over the decayed counters (the design's own
     example: "trade-focused, combat-averse, socially active") — deliberately
     not a fixed/negative label for systems that don't exist yet (trade/
     dialogue/crafting sitting at 0 forever until those systems land isn't
@@ -119,7 +119,7 @@ def derived_role_hint(profile: BehaviorProfile) -> str:
 
 
 def effective_role_hint(profile: BehaviorProfile, declared_intent: str | None = None) -> str:
-    """The generation-prompt-facing hint (updates.md, "declared intent,"
+    """The generation-prompt-facing hint ("declared intent,"
     resolved 2026-07-31): prefers the real derived_role_hint the moment
     accrued play has said anything beyond its own neutral default, and only
     falls back to the player's one-time declared_intent while that's still

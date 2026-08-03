@@ -1,4 +1,4 @@
-"""Boss encounters as situations, not HP checks (SPEC.md §6b's own framing:
+"""Boss encounters as situations, not HP checks (the design's own framing:
 because skill creation is unrestricted, a boss can't be balanced as a single
 HP number — trivial for a god-build, unbeatable for a legit one). An
 `Encounter` is DATA: an ordered sequence of `Phase`s, each with its own
@@ -13,7 +13,7 @@ adds (or wait out a turn/HP-threshold gate) before the boss can be hurt at
 all. Difficulty comes from the fight's structure, not a damage race.
 
 Scope of this chunk (the first of two closing the "bosses as situations, not
-HP checks" build-progress item — see CLAUDE.md): the encounter ENGINE only,
+HP checks" build-progress item): the encounter ENGINE only,
 exercised against hand-built test Encounters. No wiring into the real game
 yet — the actual demon-king Encounter, the invasion-complete trigger, and
 game.py's Interact wiring are the next chunk.
@@ -162,7 +162,7 @@ def run_encounter(
     phase. Returning None means flee; otherwise a `(skill, target)` pair.
 
     Unlike `combat.run_combat`, a loss here is NOT routed through
-    `setback.py` — SPEC.md §11.1 reserves true, permanent game-over
+    `setback.py` — true, permanent game-over is reserved
     specifically for the demon king and designated bosses, and this is that
     fight. The caller is responsible for the game-over flow on DEFEAT (next
     chunk's job — nothing calls run_encounter from the real game yet).
@@ -172,7 +172,7 @@ def run_encounter(
     future content-pool item) is never mutated by playing it — the same
     fight can be attempted again after a flee or a defeat.
 
-    `rng` (Step 9, SPEC.md §6b) is the same injectable dodge/crit/variance
+    `rng` (Step 9) is the same injectable dodge/crit/variance
     source `combat.run_combat` takes — defaults to a fresh `random.Random()`,
     threaded into every `apply_skill` call this function makes (fighter,
     boss/adds, and environment skills alike).
@@ -254,7 +254,7 @@ def run_encounter(
                     if is_underpriced(skill, fair):
                         player.creative_mode_used = True
                     else:
-                        # "Skills grow with use" (updates.md, resolved
+                        # "Skills grow with use" (resolved
                         # 2026-07-31) -- same exclusion combat.run_group_combat
                         # applies for an underpriced (creative_mode_used) skill.
                         skill.use_count += 1
@@ -297,9 +297,9 @@ def run_encounter(
 
 # The real demon-king fight (Chunk B) — the one Encounter this whole module
 # is scoped to (a deliberate, resolved decision: no speculative multi-boss
-# framework, see CLAUDE.md's build-progress entry for this item). Same
+# framework). Same
 # "start rough, calibrate by feel" status as every other tuning constant in
-# this codebase (SPEC.md §11) — there's no leveling system yet, so these
+# this codebase — there's no leveling system yet, so these
 # numbers aren't calibrated against anything but a fresh default Player.
 DEMON_KING_ENCOUNTER = Encounter(
     id="demon_king",

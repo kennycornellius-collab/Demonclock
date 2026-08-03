@@ -1,4 +1,4 @@
-"""Crafting (SPEC.md §6/§12 step 10, Stage 5): converts input items into an
+"""Crafting (Step 10 Stage 5): converts input items into an
 output item at a "workshop"-tagged node (game.handle_interact gates the
 Craft option on Node.tags the same way Fight already gates on
 seed.WILD_ENEMY_BY_NODE). A hand-authored fixed recipe table for v1 --
@@ -37,7 +37,7 @@ RECIPES: dict[str, Recipe] = {
         id="bake_bread", name="Bake Bread",
         inputs={"grain": 3}, output_item_id="bread", output_name="Bread", output_quantity=1,
     ),
-    # "Economy depth" follow-up (updates.md, surfaced 2026-07-29): wool/
+    # "Economy depth" follow-up (surfaced 2026-07-29): wool/
     # iron_ore are also tracked goods now (economy.BASE_PRICE, seed.py's
     # market) -- these two recipes give trading and crafting a second
     # connected loop, same "buy the raw good, craft it at the village

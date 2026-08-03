@@ -8,7 +8,7 @@ Structured output is requested via `generationConfig.responseMimeType =
 "application/json"` + `responseSchema = <schema>` (Gemini's OpenAPI-3.0-subset
 schema format, which the flat object/string/integer/array shapes this project
 uses already matches) -- never "please reply in JSON" prose prompting
-(SPEC.md §1).
+(the design).
 
 Adding a second real provider later (Anthropic/OpenAI) means a new file here
 implementing `LLMClient` the same way, plus one line in
@@ -49,7 +49,7 @@ class GeminiClient(LLMClient):
         if matches_schema(candidate, schema):
             return candidate
 
-        # One retry on malformed output (SPEC.md §1) -- a genuine API/network
+        # One retry on malformed output -- a genuine API/network
         # failure raises LLMProviderError immediately from _request and is
         # NOT retried here; that's the registry's job (try the next provider).
         candidate = self._request(system, user, schema)

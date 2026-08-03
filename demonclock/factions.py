@@ -1,12 +1,12 @@
-"""Factions + standing (SPEC.md §8, Step 10 Stage 4). Data model + canon
+"""Factions + standing (Step 10 Stage 4). Data model + canon
 check shipped this stage; `adjust_standing` (a 2026-07-30 follow-up) is the
 first live trigger that actually MOVES standing, called from
 `quests.turn_in` via a quest's optional `faction_standing_delta` payload
 (generation/quest.py). Combat outcomes / trade affiliation as additional
-triggers remain an explicit future design conversation -- see updates.md.
+triggers remain an explicit future design conversation.
 
-Standing is an ORDERED CATEGORICAL scale, not a numeric score -- SPEC.md
-§8's own worked example (`faction_standing(merchants): >= neutral`) only
+Standing is an ORDERED CATEGORICAL scale, not a numeric score -- the
+design's own worked example (`faction_standing(merchants): >= neutral`) only
 makes clean sense against named tiers and an ordering comparison, so this
 follows the spec's own wording literally rather than inventing a numeric
 range with nothing yet to calibrate it against.
@@ -34,7 +34,7 @@ def standing_of(player: Player, faction_id: str) -> str:
 
 def meets_standing(player: Player, faction_id: str, tier: str) -> bool:
     """True if the player's standing with faction_id is AT LEAST `tier` on
-    STANDING_TIERS' ordering (SPEC.md §8's own `>= neutral` example)."""
+    STANDING_TIERS' ordering (the design's own `>= neutral` example)."""
     return STANDING_TIERS.index(standing_of(player, faction_id)) >= STANDING_TIERS.index(tier)
 
 

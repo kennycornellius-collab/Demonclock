@@ -1,4 +1,4 @@
-"""Quest completion / turn-in (SPEC.md §7/§8, Step 10 Stage 2). The existing
+"""Quest completion / turn-in (Step 10 Stage 2). The existing
 `canon.RequirementKind` vocabulary + `check_manifest` checker were built
 (Step 4) purely as a pre-commit/pre-pull "still valid to OFFER" gate --
 nothing about the checker itself is offer-specific, so the same machinery

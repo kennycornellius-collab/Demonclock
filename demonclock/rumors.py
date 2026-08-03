@@ -1,6 +1,6 @@
-"""Deterministic rumor propagation (SPEC.md §10, last of Step 3's four
+"""Deterministic rumor propagation (last of Step 3's four
 stages). Every rumor traces back to a real fact in `history.LogEntry`
-(`world.event_log`, Stage 3) — never an AI-invented one (SPEC.md §13).
+(`world.event_log`, Stage 3) — never an AI-invented one.
 A deliberately authored false plant would just be another `history.record`
 call; nothing in this stage builds an authoring tool for one yet.
 
@@ -11,24 +11,24 @@ persisted, so a later map change (a link reopening, a new area falling)
 is reflected immediately without ever needing to reconcile stale stored
 propagation state against a changed graph.
 
-KNOWN SIMPLIFICATION (start rough, calibrate later — SPEC.md §11): because
+KNOWN SIMPLIFICATION (start rough, calibrate later): because
 reachability is checked against TODAY's topology rather than a full
 day-by-day historical replay, a rumor that would have had time to slip
 through a link before it closed is NOT surfaced once that link is
 permanently blocked — hearing nothing through a since-sealed border reads
-as "that region went quiet" (the intended SPEC.md §10 signal) even for
+as "that region went quiet" (the intended signal) even for
 news that, strictly, should have arrived earlier. Revisit with a real
 historical replay only if this ever reads as a bug in play rather than as
 the intended "quiet region" tell.
 
-Hop count, not travel_days, is the metric here — SPEC.md §3 is explicit
-that hop count is "fog/rumor spread radius" flavor, distinct from
+Hop count, not travel_days, is the metric here — hop count is explicitly
+"fog/rumor spread radius" flavor, distinct from
 travel_days (the real distance for actual travel). ~1 hop/day, over OPEN
 links only: a blocked link stops rumor flow the same way it stops an army
 (sim.py's invasion spread) or a traveler — "an occupied region going quiet
-is itself a signal" (SPEC.md §10).
+is itself a signal."
 
-The AI's only permitted role, per SPEC.md §10, is wording a rumor at
+The AI's only permitted role is wording a rumor at
 narration time — it never invents rumor content. No AI is wired up yet
 (that's Step 5), so `_distort` below uses a small deterministic template
 table instead: real content, mechanically reworded by distance, not a
@@ -45,12 +45,12 @@ from .world import World
 HOPS_PER_DAY = 1
 
 # Placeholder tuning constants — same status as combat.py's DOT_DURATION etc.
-# (SPEC.md §11: start rough, calibrate by feel).
+# (start rough, calibrate by feel).
 CONFIDENCE_DECAY_PER_HOP = 0.8
 MIN_CONFIDENCE = 0.1
 
 # Step 8 P5: bounds rumors_reaching's cost to a recent window instead of the
-# whole, never-pruned event_log (SPEC.md §0 pillar 5's "never reason over the
+# whole, never-pruned event_log (the "never reason over the
 # entire accumulated pile," applied here too) — an event this old is already
 # old news, not live gossip. Same "start rough, calibrate by feel" status as
 # every other tuning constant here.

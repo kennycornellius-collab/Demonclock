@@ -12,7 +12,7 @@ START_NODE_ID = "village"
 
 # Which recurring wild foe(s) (see enemies.py) a "dangerous"-tagged node
 # offers via Interact -> Fight. A real encounter/spawn system is a later
-# part (SPEC.md §12 steps 4-5); this is just enough to make combat playable
+# part; this is just enough to make combat playable
 # now. node_id -> list[enemy_id] (Step 10 Stage 6 — a single-enemy node is
 # just a one-item list; "wilds" seeds a real pack of two wolves so ordinary
 # multi-enemy combat (combat.run_group_combat) has real seeded content to
@@ -28,15 +28,15 @@ def new_default_world() -> World:
     # WILD_ENEMY_BY_NODE gates Fight — Hana the Miller's grain mill (see
     # the NPC seeded below) makes village the natural home for Bake Bread.
     world.add_node(Node(id="village", name="Millhaven Village", type="village", tags=["trade-hub", "workshop"]))
-    # Seeded with tracked prices (SPEC.md §12 step 2, Stage 3: price shifts)
+    # Seeded with tracked prices (world-sim Stage 3: price shifts)
     # — the only trade-hub node with tracked prices this stage. Wool/iron_ore
-    # (added alongside grain as the "economy depth" follow-up, updates.md)
+    # (added alongside grain as the "economy depth" follow-up)
     # feed crafting.RECIPES' spin_cloth/smelt_iron the same way grain feeds
     # bake_bread — buy the raw good here, craft it at the village workshop.
     world.add_node(Node(
         id="market", name="Millhaven Market", type="market", tags=["trade-hub"],
         prices={"grain": 10, "wool": 8, "iron_ore": 15},
-        # "Faction standing: trade trigger" (updates.md, resolved
+        # "Faction standing: trade trigger" (resolved
         # 2026-07-31, Chunk D): trade.buy/sell nudges standing with
         # whichever faction (if any) a node is affiliated with -- market is
         # the one node seeded that way, matching Warden Oskar's own guard
@@ -44,7 +44,7 @@ def new_default_world() -> World:
         faction_id="merchants",
     ))
     world.add_node(Node(id="road", name="Old North Road", type="road"))
-    # Starts "occupied" — it borders demon-king territory (SPEC.md §12 step 2,
+    # Starts "occupied" — it borders demon-king territory (world-sim
     # Stage 2: invasion-as-graph-spread). No bootstrap event needed for this;
     # the OBSERVABLE spread (other nodes falling, links cutting off) still
     # only happens later, on the invasion's own timer below.
@@ -54,8 +54,8 @@ def new_default_world() -> World:
     world.add_link("village", "road", "north", travel_days=1)
     world.add_link("road", "wilds", "north", travel_days=2)
 
-    # Step 10 Stage 4 follow-up: one hand-seeded faction, matching SPEC.md
-    # §8's own worked example ("faction_standing(merchants): >= neutral")
+    # Step 10 Stage 4 follow-up: one hand-seeded faction, matching the
+    # design's own worked example ("faction_standing(merchants): >= neutral")
     # literally by id -- previously the whole faction system (factions.py,
     # canon.RequirementKind.FACTION_STANDING_AT_LEAST, Player.
     # faction_standing) was unreachable content, since nothing ever created
@@ -83,15 +83,15 @@ def new_default_world() -> World:
         tags=["guard"],
     ))
 
-    # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
+    # "Bosses as situations, not HP checks," Chunk B:
     # wilds is where the invasion originates (see the "occupied" comment
     # below), so it's also where sim._reveal_demon_king retags the node
     # "demon_king" once the whole graph has fallen — see boss.py for the
     # actual encounter, game.handle_interact for the trigger.
     world.invasion_origin_id = "wilds"
 
-    # Demo scheduled events (SPEC.md §12 step 2, Stage 1: timers & scheduled
-    # events) — proves the world moves on its own timer (SPEC.md §0 pillar 4)
+    # Demo scheduled events (world-sim Stage 1: timers & scheduled
+    # events) — proves the world moves on its own timer
     # even in a fresh game nobody has touched yet. A blizzard closes the
     # northern pass, then self-clears: demonstrates both the atomic
     # block/unblock invariant and a self-clearing timer in real play. The
@@ -110,8 +110,8 @@ def new_default_world() -> World:
         description="The blizzard clears; the northern pass is open again.",
     ))
 
-    # The demon-king invasion (SPEC.md §12 step 2, Stage 2) — an ambient
-    # pressure source (SPEC.md §4) ticking regardless of what the player
+    # The demon-king invasion (world-sim Stage 2) — an ambient
+    # pressure source ticking regardless of what the player
     # does. First attempt at day 15, comfortably after the blizzard above
     # fully resolves (day 9), so their shared road<->wilds link isn't fought
     # over by two systems in the same window. sim._apply_invasion_spread
@@ -120,12 +120,12 @@ def new_default_world() -> World:
     # day 20 (village), day 25 (market), then it stops.
     world.schedule_event(ScheduledEvent(due_day=15, kind=EventKind.INVASION_SPREAD))
 
-    # Price volatility (SPEC.md §12 step 2, Stage 3) — an ongoing ambient
-    # pressure source (SPEC.md §4) that, unlike the invasion, never stops
+    # Price volatility (world-sim Stage 3) — an ongoing ambient
+    # pressure source that, unlike the invasion, never stops
     # rescheduling. First attempt at day 3, before the blizzard, so it's
     # background noise from early on. Grain at Millhaven Market holds steady
     # until the invasion's approach (village falling day 20, market itself
-    # day 25) starts pushing its price up — SPEC.md §10's "grain prices
+    # day 25) starts pushing its price up — the "grain prices
     # spike (economy tell)" made real.
     world.schedule_event(ScheduledEvent(due_day=3, kind=EventKind.PRICE_SHIFT))
 

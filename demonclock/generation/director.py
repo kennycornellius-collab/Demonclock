@@ -1,10 +1,10 @@
-"""The Director agent (SPEC.md §7 step 2): the first real caller of the
+"""The Director agent: the first real caller of the
 llm/ client layer. Given the bounded batch context (context.py), produces
 structured *intent* for this batch -- a responsive-vs-world-driven mix, a
 pressure level, and a short list of salient threads -- never world content
 itself. Chunk C's Story agent reads this intent; the Director never touches
 `state.world`/`state.player` directly, so it can't accidentally become a
-second place that mutates state outside a validated engine function (SPEC.md
+second place that mutates state outside a validated engine function (the
 §0 pillar 6).
 """
 from __future__ import annotations

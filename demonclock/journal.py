@@ -1,4 +1,4 @@
-"""A player-facing journal/recap (updates.md, surfaced 2026-07-29): a small,
+"""A player-facing journal/recap (surfaced 2026-07-29): a small,
 append-only, PLAYER-scoped log of the player's own story so far (places
 first visited, fights won/lost, quests completed, captures/escapes),
 distinct from `history.py`/`World.event_log` (which is world-wide, feeds

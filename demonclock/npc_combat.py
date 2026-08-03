@@ -1,4 +1,4 @@
-"""Chunk A of "faction standing: combat trigger" (updates.md, resolved
+"""Chunk A of "faction standing: combat trigger" (resolved
 2026-07-31) — the foundation that makes an NPC a legitimate combat target.
 No UI wiring, no killing, no standing changes yet (Chunks B/C); this is
 purely the "what stats does this NPC fight with" primitive those later
@@ -35,7 +35,7 @@ class NPCArchetype(str, Enum):
 
 
 # Hand-authored, small by design (same "start rough, calibrate by feel"
-# status as enemies.py's own _ENEMY_TEMPLATES, SPEC.md §11) — CIVILIAN is
+# status as enemies.py's own _ENEMY_TEMPLATES) — CIVILIAN is
 # deliberately the weakest entry, since it's also the fallback for an
 # untagged/unmatched NPC below.
 _ARCHETYPE_STATS: dict[NPCArchetype, dict] = {
@@ -75,7 +75,7 @@ def combatant_for_npc(npc: NPC) -> Combatant:
     Luck defaults to 0 (Combatant's own default) — same "start rough"
     status as every enemy/boss/add today: an NPC never crits either.
     proper_name=True so combat._enemies_desc doesn't prefix an NPC's own
-    proper name with "the" (updates.md "Open bugs," fixed 2026-07-31 --
+    proper name with "the" ("Open bugs," fixed 2026-07-31 --
     "the Hana the Miller" read as a doubled-up article)."""
     stats = _ARCHETYPE_STATS[archetype_for(npc)]
     return Combatant(

@@ -59,7 +59,7 @@ def test_a_blocked_link_stops_rumor_propagation_no_matter_how_much_time_passes()
 def test_a_later_link_closure_suppresses_a_rumor_even_if_it_couldve_already_arrived():
     # Documented simplification: propagation is checked against the CURRENT
     # topology, not a historical replay. A now-sealed border reads as "this
-    # region went quiet" (the intended SPEC.md §10 signal) even for news
+    # region went quiet" (the intended signal) even for news
     # that, strictly, had time to slip through before the link closed.
     world = make_world("a", "b")
     world.add_link("a", "b", "north", travel_days=1)

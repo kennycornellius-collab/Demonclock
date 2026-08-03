@@ -1,6 +1,6 @@
-"""Node price tracking (SPEC.md §4/§7/§10 — "grain prices spike" as an
+"""Node price tracking ("grain prices spike" as an
 ambient pressure source / fog-of-war economy tell). Stage 3 of world
-simulation (SPEC.md §12 step 2).
+simulation.
 
 Kept intentionally small: one good (`grain`, SPEC's own named example), no
 baseline drift while nothing threatens the area — there's no RNG anywhere in
@@ -9,7 +9,7 @@ to anything SPEC describes, so a safe node's price simply holds steady.
 Movement is driven entirely by Stage 2's `occupied` node state: an occupied
 node's prices spike, and so do its neighbors' — the market hears the news
 before it falls. No buy/sell trading exists yet — that's a future
-Interact->Trade menu (SPEC.md §6), a separate build item; this stage only
+Interact->Trade menu, a separate build item; this stage only
 proves prices are live, drifting world state the player can read as a
 signal.
 """
@@ -19,7 +19,7 @@ from .player import display_name
 from .state import GameState
 from .world import World
 
-# "Economy depth" follow-up (updates.md, surfaced 2026-07-29): grain was the
+# "Economy depth" follow-up (surfaced 2026-07-29): grain was the
 # only good ever seeded/tracked anywhere, even though this whole module was
 # always general enough to handle an arbitrary number of them. Pure content,
 # no engine change -- wool/iron_ore are also crafting.RECIPES inputs now

@@ -1,6 +1,6 @@
-"""The Quest agent (SPEC.md §7 step 4): turns a Situation (story.py) into a
+"""The Quest agent: turns a Situation (story.py) into a
 concrete task -- a `pool.GeneratedItem` carrying a `PreconditionManifest`
-built EXCLUSIVELY from `canon.RequirementKind`'s existing enum (SPEC.md §8:
+built EXCLUSIVELY from `canon.RequirementKind`'s existing enum (the design:
 the AI proposes references, the manifest is structured booleans, never
 prose). Emits exactly the shape `pool.commit_or_repair` already knows how to
 validate/commit -- nothing new to plumb into Step 4's machinery.
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 _REQUIREMENT_KINDS = ", ".join(kind.value for kind in RequirementKind)
 
-# Root-cause fix for a real, live, repeatable bug (see updates.md's "Open
-# TODOs"): the prompt used to name only the legal `kind` values, never each
+# Root-cause fix for a real, live, repeatable bug: the prompt used to
+# name only the legal `kind` values, never each
 # kind's expected `target` KEYS -- `target`'s own JSON schema is just
 # `{"type": "object"}` (the hand-rolled validator can't express "these keys
 # are required, conditional on kind"), so nothing structurally stopped the
@@ -156,7 +156,7 @@ QUEST_SCHEMA = {
             },
             "required": ["faction_id", "tiers"],
         },
-        # NPC-quest link follow-up (updates.md, surfaced 2026-07-29): which
+        # NPC-quest link follow-up (surfaced 2026-07-29): which
         # NPC (if any) hands this quest out -- game._handle_talk surfaces a
         # matching pool item inline during that NPC's conversation
         # (pool.pull_for_npc), instead of the player only ever finding it
@@ -167,7 +167,7 @@ QUEST_SCHEMA = {
         # AI-proposed reference degrades gracefully, never crashes" posture
         # as faction_standing_delta above.
         "giver_npc_id": {"type": "string"},
-        # The precondition manifest (SPEC.md §8): gates whether this quest is
+        # The precondition manifest: gates whether this quest is
         # still valid to OFFER. pool.commit_or_repair/pool.pull are the only
         # things that ever read this one.
         "manifest": _MANIFEST_SCHEMA,
@@ -195,7 +195,7 @@ def run_quest_repair(
     item: GeneratedItem,
     failures: list[RequirementResult],
 ) -> GeneratedItem:
-    """SPEC.md §8: "prefer repair over rejection" -- re-prompts the Quest
+    """"Prefer repair over rejection" -- re-prompts the Quest
     agent with the SPECIFIC failing requirements (never the whole DB, never
     a from-scratch regeneration) for a targeted patch. The caller
     (pipeline.py's repair_fn closure) re-validates the result against the

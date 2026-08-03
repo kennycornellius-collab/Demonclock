@@ -327,7 +327,7 @@ def test_choose_action_can_target_an_add_distinct_from_the_boss():
 def test_casting_an_underpriced_skill_in_a_boss_fight_sets_creative_mode_used():
     # Regression test: run_encounter never checked is_underpriced at all, so
     # beating a boss with a deliberately cost-zeroed skill silently never set
-    # the flag SPEC.md §6b requires for that opt-out act -- mirrors combat.py's
+    # the flag this design requires for that opt-out act -- mirrors combat.py's
     # own test_casting_an_underpriced_skill_sets_creative_mode_used.
     godmode = Skill(
         id="godmode", name="One-Shot Everything",
@@ -362,7 +362,7 @@ def test_basic_attack_never_sets_creative_mode_used_in_a_boss_fight():
     assert player.creative_mode_used is False
 
 
-# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+# -- skill growth (resolved 2026-07-31) -------------------------------------
 
 def test_casting_a_fairly_priced_skill_increments_its_use_count_in_a_boss_fight():
     firebolt = Skill(

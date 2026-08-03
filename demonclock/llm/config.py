@@ -1,4 +1,4 @@
-"""Per-role provider routing (SPEC.md §7's agent roles) -- Step 5 Chunk A.
+"""Per-role provider routing (the generation pipeline's agent roles) -- Step 5 Chunk A.
 
 Two decisions locked with the user, encoded here:
   - **"Both" routing**: `GenerationConfig.roles` maps each role to an ORDERED
@@ -28,9 +28,9 @@ import json
 import os
 from dataclasses import dataclass, field
 
-# Every generation role in SPEC.md §7's pipeline, plus the entity-resolution
-# AI fallback (SPEC.md §8) resolve.py wires in at Chunk D, plus the Narrator
-# (SPEC.md §2/§10 -- rumor wording + combat-outcome summaries, Step 7 Chunks
+# Every generation role in the pipeline, plus the entity-resolution
+# AI fallback resolve.py wires in at Chunk D, plus the Narrator
+# (rumor wording + combat-outcome summaries, Step 7 Chunks
 # A/B) that touches presentation text rather than world content, plus
 # "flavor" (Step 7 Chunk C) -- a batch-time content-generation role like
 # director/story/quest/places, just for ambient per-node atmosphere rather

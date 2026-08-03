@@ -1,7 +1,7 @@
-"""Player-authored skills + the enumerated `effects` vocabulary (SPEC.md §6b).
+"""Player-authored skills + the enumerated `effects` vocabulary.
 
 Effects are composed from a FIXED enumerated set — never free text, never
-LLM-adjudicated (SPEC.md §13). This is the hard exploit boundary of the whole
+LLM-adjudicated. This is the hard exploit boundary of the whole
 design: a player can compose damage+dot+lifesteal, but can never invent a new
 verb like "enemy can never act."
 
@@ -40,8 +40,8 @@ class EffectKind(str, Enum):
     TAUNT = "taunt"
 
 
-# AOE and KNOCKBACK got real implementations in Step 10 Stage 6 (SPEC.md §12
-# build progress) now that multi-enemy ordinary combat exists to give them a
+# AOE and KNOCKBACK got real implementations in Step 10 Stage 6
+# now that multi-enemy ordinary combat exists to give them a
 # target — see combat.apply_skill. TAUNT stays here, still legal to compose
 # (never rejected) but mechanically inert: this game has exactly one
 # player-side combatant, so there's no ally for an enemy's attack to be
@@ -89,7 +89,7 @@ class Skill:
     cooldown: int = 0
     cast_time: int = 0  # multi-turn casting — a stored field, inert this stage
     computed_fair_cost: int = 0  # the fair MANA cost at authoring time (see compute_fair_cost)
-    # "Skills grow with use" (updates.md, resolved 2026-07-31): how many
+    # "Skills grow with use" (resolved 2026-07-31): how many
     # times this skill has been successfully cast by its owning player,
     # never an enemy/boss cast (see combat.run_group_combat/boss.
     # run_encounter, the only two places that ever increment this).
@@ -140,19 +140,19 @@ class SkillError(ValueError):
 
 
 def compute_magnitude(base_damage: int, attribute_multiplier: float, stat_value: int) -> int:
-    """SPEC.md §6b damage formula: `(base_damage * attribute_multiplier) +
+    """The damage formula: `(base_damage * attribute_multiplier) +
     attribute_value`. Single source of truth for "how strong is this skill" —
     both `combat.apply_skill`'s live casts and the fair-cost calculator below
     derive a skill's power from this one formula, so they can never drift."""
     return int(base_damage * attribute_multiplier) + stat_value
 
 
-# "Skills grow with use" (updates.md, resolved 2026-07-31): sqrt(use_count)
+# "Skills grow with use" (resolved 2026-07-31): sqrt(use_count)
 # gives deliberately UNCAPPED diminishing returns — the user's own framing
 # was "the stronger you are, the harder it is to become even stronger," not
 # a hard ceiling, so this is not clamped like CRIT_CAP/DODGE_CAP elsewhere.
 # Placeholder number — same "start rough, calibrate by feel" status as
-# EFFECT_POWER_WEIGHT/MANA_PER_POWER above (SPEC.md §11).
+# EFFECT_POWER_WEIGHT/MANA_PER_POWER above.
 GROWTH_PER_SQRT_USE = 0.05
 
 
@@ -178,7 +178,7 @@ def compute_grown_magnitude(base_magnitude: int, use_count: int) -> int:
 
 # Relative "how strong is this effect" weights feeding the fair-cost formula.
 # Placeholder numbers — same status as combat.py's DOT_DURATION/STUN_DURATION/
-# etc: start rough, calibrate by feel (SPEC.md §11). Control/utility effects
+# etc: start rough, calibrate by feel. Control/utility effects
 # (STUN, CLEANSE) don't actually scale with magnitude in combat.py today (a
 # stun is a fixed duration regardless of power) — they're still priced off
 # magnitude here because a caster's own stat already sets a magnitude floor,
@@ -211,7 +211,7 @@ class FairCost:
 
 
 def compute_fair_cost(effects: list[Effect], magnitude: int) -> FairCost:
-    """The Stage 3 fair-cost calculator (SPEC.md §6b): turns a skill's power
+    """The Stage 3 fair-cost calculator: turns a skill's power
     (its effects composed + how hard they'll hit, per `compute_magnitude`)
     into an engine-suggested MANA/cooldown/cast-time. A skill with no effects
     does nothing, so it's fairly free. This never blocks anything — it's a
@@ -227,7 +227,7 @@ def compute_fair_cost(effects: list[Effect], magnitude: int) -> FairCost:
 
 def is_underpriced(skill: Skill, fair: FairCost) -> bool:
     """True if `skill`'s actual cost undercuts the engine's fair suggestion on
-    any dimension — the deliberate "cost-zeroing act" SPEC.md §6b treats as
+    any dimension — the deliberate "cost-zeroing act" this design treats as
     the opt-out gesture into creative mode. Never a rejection: creation stays
     unblocked regardless of what this returns (see `combat.run_combat` for
     where this actually flips `Player.creative_mode_used`, at CAST time, not
@@ -254,7 +254,7 @@ def generate_skill_id(name: str, existing_ids: set[str]) -> str:
 
 def validate_skill(skill: Skill) -> None:
     """Guards the enum boundary — NOT a balance/power check. Skill creation is
-    never blocked by power level (SPEC.md §6b); this only rejects a
+    never blocked by power level; this only rejects a
     structurally malformed effect (a BUFF/DEBUFF with no target stat)."""
     for effect in skill.effects:
         if effect.kind in (EffectKind.BUFF, EffectKind.DEBUFF) and effect.stat is None:

@@ -1,8 +1,8 @@
-"""The orchestrator `sim._run_batch` delegates to (SPEC.md §4/§13: exactly
+"""The orchestrator `sim._run_batch` delegates to (exactly
 ONE coalesced call per elapsed-time span, regardless of how many days
 elapsed -- enforced by `sim.advance_time` calling `_run_batch` exactly once,
 unchanged since Chunk B). Step 5 Chunk C wired in Story + Quest: each of the
-two generation streams (SPEC.md §7's "avoid the echo chamber") produces one
+two generation streams (the "avoid the echo chamber" design) produces one
 Situation -> one Quest, committed to `state.world.content_pool` via the
 existing, canon-gated `pool.commit_or_repair`. Step 5 Chunk D added Places --
 run only when a committed quest's own payload signals it wants a place that
@@ -12,7 +12,7 @@ Any single generation-role failure degrades gracefully rather than raising
 out of a player's turn: a failed Director call skips the WHOLE batch (there's
 no intent to hand the rest of the pipeline); a failed Story/Quest call skips
 only ITS OWN stream; a failed/declined Places call just means the quest
-commits without its requested new place (SPEC.md §1: the pool already
+commits without its requested new place (the pool already
 absorbs the loss of any single discarded item -- a missing "nice to have"
 extension is an even smaller loss than that).
 
@@ -23,7 +23,7 @@ skipped entirely for that batch (see `_should_run_stream`) -- a real,
 Director-judged lopsided read of "the player's own patterns barely matter
 right now" (or vice versa) now actually changes what gets generated, not
 just what gets said about it. This is a deliberate, bounded loosening of
-SPEC.md §7's "both requested every batch" framing, not a repeal of it: the
+the "both requested every batch" framing, not a repeal of it: the
 Director recomputes intent FRESH from current world truth + behavior every
 single batch, so a skip can never persist independent of the player's/
 world's actual state continuing to justify it -- but a player who
@@ -60,14 +60,14 @@ if TYPE_CHECKING:
 _DEGRADE_ON = (LLMProviderError, MalformedGenerationError, NoProviderConfiguredError)
 
 # "responsive" keeps content connected to what the player's been doing,
-# "world_driven" keeps the world moving independent of them (SPEC.md §7).
+# "world_driven" keeps the world moving independent of them.
 # Both are attempted every batch by default; Step 7 Chunk D added the one
 # exception -- see _should_run_stream below.
 _STREAMS = ("responsive", "world_driven")
 
 # Step 7 Chunk D: a stream is skipped entirely for a batch when the
 # Director's own weight for it comes back below this -- start rough,
-# calibrate by feel (SPEC.md §11), same status as every other placeholder
+# calibrate by feel, same status as every other placeholder
 # tuning constant in this codebase.
 STREAM_SKIP_THRESHOLD = 0.2
 
@@ -85,7 +85,7 @@ def run_batch(state: GameState, registry: LLMRegistry) -> DirectorIntent | None:
     `state.world.content_pool`, and (Chunk D) the graph is extended via
     `world.add_node`/`add_link` if a committed quest asked for a new place;
     nothing about either side effect is narrated to the player directly
-    (generated content goes to the pool, not shown live, SPEC.md §7)."""
+    (generated content goes to the pool, not shown live)."""
     if not registry.enabled:
         return None
 
@@ -155,7 +155,7 @@ def _generate_and_commit(
 def _maybe_extend_world(
     state: GameState, registry: LLMRegistry, context: dict, situation: Situation, item: GeneratedItem,
 ) -> None:
-    """SPEC.md §7 step 5: Places runs LAST, and only when the quest itself
+    """Places runs LAST, and only when the quest itself
     signals it needs a place that doesn't exist yet. A failure here (no
     "places" role configured, a bad LLM proposal, an unresolvable direction)
     is silently absorbed -- the quest still commits without the new place,

@@ -14,6 +14,6 @@ class MalformedGenerationError(Exception):
     """The provider responded, but its output isn't valid JSON matching the
     requested schema, even after one retry. Never triggers fallback -- a
     different provider facing the same prompt has no particular reason to
-    do better, so this bubbles up to the caller to discard the item (SPEC.md
-    §1: "malformed output gets exactly one retry, then the item is
+    do better, so this bubbles up to the caller to discard the item
+    ("malformed output gets exactly one retry, then the item is
     discarded")."""

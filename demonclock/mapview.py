@@ -1,7 +1,7 @@
-"""ASCII adjacency rendering for Atlas (updates.md, surfaced 2026-07-29): a
+"""ASCII adjacency rendering for Atlas (surfaced 2026-07-29): a
 text-art layout of discovered places over their graph links, instead of
-Atlas's existing flat alphabetical list (which is accurate to SPEC.md §10's
-belief model but doesn't convey "the world is a graph", CLAUDE.md §3, the
+Atlas's existing flat alphabetical list (which is accurate to the
+belief model but doesn't convey "the world is a graph" the
 way an adjacency sketch would).
 
 Governed by Player.beliefs the same way the rest of Atlas already is --

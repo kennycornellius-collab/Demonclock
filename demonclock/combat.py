@@ -1,9 +1,9 @@
-"""Turn-based combat (SPEC.md §6b) — skill-based since Stage 2, with Stage 3's
+"""Turn-based combat — skill-based since Stage 2, with Stage 3's
 fair-cost check wired in: the moment the player CASTS a learned skill whose
 actual cost undercuts `skills.compute_fair_cost` on any dimension, this sets
 `Player.creative_mode_used` (never at authoring time — see skills.py).
 
-Step 9 (SPEC.md §6b's RNG design, built as two chunks): an injectable
+Step 9 (the combat-RNG design, built as two chunks): an injectable
 `random.Random` is threaded through `run_combat`, defaulting to a fresh
 instance so real play gets it for free, but overridable (including with a
 matched seed) so a fight stays exactly as reproducible as it was pre-RNG.
@@ -18,7 +18,7 @@ before.
 
 Effect targeting is a fixed default: harmful effects (damage/stun/dot/debuff)
 hit the opponent; beneficial effects (heal/lifesteal/shield/buff/cleanse)
-apply to the caster. Step 10 Stage 6 (SPEC.md §12 build progress) gave AOE and
+apply to the caster. Step 10 Stage 6 gave AOE and
 KNOCKBACK real implementations now that multi-enemy ordinary combat
 (`run_group_combat`) exists to give them a target/mechanic: AOE makes the
 skill's own damage instance also splash onto every OTHER live combatant on
@@ -59,8 +59,8 @@ from .skills import (
     is_underpriced,
 )
 
-# Placeholder tuning constants — same status as the fair-cost curve (SPEC.md
-# §11: "start rough, calibrate by feel").
+# Placeholder tuning constants — same status as the fair-cost curve
+# ("start rough, calibrate by feel").
 DOT_DURATION = 3
 STUN_DURATION = 1
 BUFF_DEBUFF_DURATION = 3
@@ -83,7 +83,7 @@ KNOCKBACK_STUN_TURNS = 1
 # any real fight, low enough to guarantee run_combat always returns.
 MAX_COMBAT_ROUNDS = 100
 
-# Step 9 (SPEC.md §6b), "start rough, calibrate by feel" placeholders, same
+# Step 9, "start rough, calibrate by feel" placeholders, same
 # status as DOT_DURATION etc. above. Dodge is rolled on the defender, using
 # the attacker's AND defender's post-buff AGILITY (effective_stat) — the same
 # stat that already drives turn order, paying off again here.
@@ -166,7 +166,7 @@ class Combatant:
     # NPC like "Hana the Miller" -- npc_combat.combatant_for_npc sets this).
     # _enemies_desc below skips its usual "the X" prefix for these, since
     # "the Hana the Miller" reads as a doubled-up article rather than
-    # flavor (updates.md, "Open bugs," surfaced 2026-07-31 building NPC
+    # flavor ("Open bugs," surfaced 2026-07-31 building NPC
     # combat). Defaults False so every wild-enemy/boss/add's existing,
     # already-tested "the X" wording is completely unchanged.
     proper_name: bool = False
@@ -204,14 +204,14 @@ def effective_stat(combatant: Combatant, stat: StatType) -> int:
 
 
 def _roll_dodge(defender: Combatant, attacker: Combatant, rng: random.Random) -> bool:
-    """SPEC.md §6b: rolled on the defender before damage is computed."""
+    """Rolled on the defender before damage is computed."""
     chance = effective_stat(defender, StatType.AGILITY) - effective_stat(attacker, StatType.AGILITY)
     chance = min(DODGE_CAP, max(0.0, BASE_DODGE + chance * DODGE_PER_AGI))
     return rng.random() < chance
 
 
 def _roll_crit(attacker: Combatant, rng: random.Random) -> bool:
-    """SPEC.md §6b: rolled on the attacker, only once dodge has failed to
+    """Rolled on the attacker, only once dodge has failed to
     trigger. LUCK is never negative (Player's own default/fixed attribute
     set has no floor enforcement below 0 today, but nothing authors a
     negative one either), so this chance never needs the max(0.0, ...) floor
@@ -221,7 +221,7 @@ def _roll_crit(attacker: Combatant, rng: random.Random) -> bool:
 
 
 def _apply_variance(magnitude: int, rng: random.Random) -> int:
-    """SPEC.md §6b: every surviving (non-dodged) hit, crit or not, gets a
+    """Every surviving (non-dodged) hit, crit or not, gets a
     small multiplicative jitter so identical stats don't always print an
     identical number. Floored at 1 — variance should never zero out a hit
     that dodge already let through."""
@@ -229,9 +229,9 @@ def _apply_variance(magnitude: int, rng: random.Random) -> int:
 
 
 def _magnitude(caster: Combatant, skill: Skill) -> int:
-    """SPEC.md §6b damage formula, generalized: every effect on a skill draws
+    """The damage formula, generalized: every effect on a skill draws
     from the same power budget rather than each having its own tunable
-    number — keeps the schema close to what SPEC.md §6b actually specifies."""
+    number."""
     return compute_magnitude(skill.base_damage, skill.attribute_multiplier, effective_stat(caster, skill.attribute_type))
 
 
@@ -289,7 +289,7 @@ def apply_skill(
     case. Only `run_group_combat`'s player-turn dispatch ever passes a
     non-empty list.
     """
-    # Growth (updates.md, resolved 2026-07-31) is applied here, at the
+    # Growth (resolved 2026-07-31) is applied here, at the
     # actual point of effect resolution -- never inside _magnitude itself,
     # which run_group_combat/boss.run_encounter's own fair-cost/
     # is_underpriced checks also call and must keep comparing against the
@@ -471,7 +471,7 @@ def _enemies_desc(enemies: list[Combatant]) -> str:
 
     A `proper_name` combatant (an NPC, e.g. "Hana the Miller") skips the
     "the " prefix entirely — "the Hana the Miller" read as a doubled-up
-    article rather than flavor (updates.md "Open bugs," surfaced
+    article rather than flavor ("Open bugs," surfaced
     2026-07-31). Every wild enemy/boss/add still defaults `proper_name` to
     False, so this is purely additive: none of their existing wording
     changes."""
@@ -571,7 +571,7 @@ def run_group_combat(
                     if is_underpriced(skill, fair):
                         player.creative_mode_used = True
                     else:
-                        # "Skills grow with use" (updates.md, resolved
+                        # "Skills grow with use" (resolved
                         # 2026-07-31) -- excluded for an underpriced skill
                         # (creative_mode_used territory) so the game's one
                         # deliberate exploit door doesn't also compound with
@@ -593,7 +593,7 @@ def run_group_combat(
     player.mana = fighter.mana
 
     if fighter.hp <= 0:
-        # SPEC.md §11.1: losing a fight is never game-over except vs. the
+        # Losing a fight is never game-over except vs. the
         # demon king / designated bosses — an ordinary loss is a recoverable
         # setback (setback.py), never a soft-lock.
         player.hp = max(1, player.hp_max // 4)
@@ -633,12 +633,12 @@ def run_combat(
     back onto `player` before returning; `enemy` is mutated in place (a
     throwaway per-encounter Combatant built by the caller).
 
-    Combat does not advance the day clock — SPEC.md §4 reserves that for
+    Combat does not advance the day clock — that's reserved for
     travel/rest, not intra-day actions. `current_day` is only needed to stamp
     a captured player's guaranteed release day (setback.py) on DEFEAT; it
     defaults to 0 since most tests don't care about the exact day.
 
-    `rng` (Step 9, SPEC.md §6b) drives dodge/crit/variance — defaults to a
+    `rng` (Step 9) drives dodge/crit/variance — defaults to a
     fresh `random.Random()` so real play gets working RNG combat with no
     caller changes, but a test can inject a seeded (or rigged) instance to
     keep a fight fully reproducible; the same seed passed to two separate

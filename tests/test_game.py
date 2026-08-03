@@ -2,7 +2,7 @@
 scripted manual REPL runs, per the module's own history). This file's first
 job is regression coverage for the "0"-selects-the-last-item bug and the
 combat-menu silent-default-substitution bug, both fixed together since they
-shared the exact same code (see updates.md/CLAUDE.md build-progress entries).
+shared the exact same code.
 
 Combat sites are tested by monkeypatching combat.run_group_combat/
 boss.run_encounter to a stub that calls the real `choose_action` closure
@@ -429,7 +429,7 @@ def test_free_text_skills_atlas_quests_ask_around_dispatch_to_their_own_handlers
     assert "Nothing worth recording yet." in capsys.readouterr().out
 
 
-# --- Attack NPC ("faction standing: combat trigger" Chunk B, updates.md) ---
+# --- Attack NPC ("faction standing: combat trigger" Chunk B) ---------------
 
 def test_handle_interact_offers_attack_alongside_talk_for_each_npc(monkeypatch, capsys):
     state = make_default_state(location_id="village")
@@ -494,7 +494,7 @@ def test_handle_attack_npc_flee_leaves_the_npc_alive(monkeypatch, capsys):
     assert "miller_hana" in state.world.npcs
 
 
-# -- standing consequences (Chunk C, updates.md) --------------------------
+# -- standing consequences (Chunk C) -----------------------------------------
 
 def test_handle_attack_npc_dips_standing_the_moment_combat_starts_even_on_flee(monkeypatch, capsys):
     state = make_default_state(location_id="village")
@@ -728,7 +728,7 @@ def test_report_ai_connectivity_prints_a_clear_warning_when_configured_but_unrea
     assert "API key" in out
 
 
-# --- Declared intent (updates.md, resolved 2026-07-31) -----------------------
+# --- Declared intent (resolved 2026-07-31) ----------------------------------
 
 def test_new_game_wires_declared_intent_into_the_player():
     state = game.new_game("Hero", "an aspiring king")

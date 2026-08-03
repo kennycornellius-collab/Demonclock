@@ -139,7 +139,7 @@ def test_trades_record_a_behavior_action():
     assert state.player.behavior.trade_actions == 1.0
 
 
-# -- faction standing trade trigger (updates.md, resolved 2026-07-31, Chunk D)
+# -- faction standing trade trigger (resolved 2026-07-31, Chunk D) ----------
 
 def test_buy_below_threshold_does_not_touch_standing():
     world = make_world(prices={"grain": 10}, faction_id="merchants")

@@ -1,19 +1,19 @@
-"""The Narrator agent (SPEC.md §2/§10, Step 7): the generation role that
+"""The Narrator agent (Step 7): the generation role that
 touches presentation text rather than world content. It never decides
-anything the engine hasn't already decided (SPEC.md §6's narration rule: "it
+anything the engine hasn't already decided (the narration rule: "it
 cannot change win/lose," generalized here to "it cannot change what
 happened") -- every function below only dresses up a fact/log/result some
 other module already fully computed.
 
 Chunk A -- `reword_rumor`: rewords a rumor `rumors.py` has already fully
-computed, per SPEC.md §10's "the AI's only role is wording a rumor, never
+computed, per the design's "the AI's only role is wording a rumor, never
 inventing one." `rumors.py` itself stays untouched and fully deterministic.
 Wired into `game.handle_ask_around` and `newspaper.format_newspaper`.
 
 Chunk B -- `narrate_combat_outcome`: summarizes one ALREADY-FINISHED fight's
 deterministic turn-by-turn log (`combat.run_combat`/`boss.run_encounter`'s
 own `log` return value) into a short prose recap. Called exactly ONCE per
-whole fight, never per turn -- SPEC.md §13's "most turns cost zero AI calls"
+whole fight, never per turn -- the "most turns cost zero AI calls"
 invariant is about the daytime loop's per-action cost, and an entire combat
 encounter is already a rare action relative to Move/Look, so one call per
 fight stays well inside it. Wired into `game.handle_interact`'s wild-foe

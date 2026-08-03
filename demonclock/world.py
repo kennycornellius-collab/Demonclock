@@ -1,4 +1,4 @@
-"""The graph map. SPEC.md §3: nodes + directional links, no coordinates.
+"""The graph map: nodes + directional links, no coordinates.
 
 Three invariants enforced HERE (not by convention — see tests/test_world.py):
   - add_link always writes both directional rows unless one_way=True.
@@ -32,11 +32,11 @@ class World:
     def __init__(self) -> None:
         self.nodes: dict[str, Node] = {}
         self.links: dict[str, list[Link]] = {}  # from_id -> outgoing Links
-        self.scheduled_events: list[ScheduledEvent] = []  # SPEC.md §3/§12 step 2
-        # Append-only history log (SPEC.md §9) — grows forever, only ever
+        self.scheduled_events: list[ScheduledEvent] = []  # world-sim Stage 1
+        # Append-only history log — grows forever, only ever
         # appended to via history.record, never pruned like scheduled_events.
         self.event_log: list[LogEntry] = []
-        # Generated-content pool (SPEC.md §7/§8) — mutated via pool.py's
+        # Generated-content pool — mutated via pool.py's
         # commit_or_repair (append) and pull (pop). Nothing writes to this
         # yet (Step 5); the list exists now so persistence is already
         # correct once a real generator does.
@@ -49,7 +49,7 @@ class World:
         # configured" — the reveal step is then a no-op, so a minimal/test
         # world with no invasion content is unaffected.
         self.invasion_origin_id: str | None = None
-        # Ambient per-node flavor lines (SPEC.md §2/§10, Step 7 Chunk C) --
+        # Ambient per-node flavor lines (Step 7 Chunk C) --
         # AI-generated atmosphere, refreshed for whichever nodes a batch's
         # bounded context covered (generation/flavor.py), PULLED by
         # actions.py's look/arrival narration rather than generated live.
@@ -58,14 +58,14 @@ class World:
         # for any given node is harmless -- the caller just shows nothing
         # extra, same as before this existed.
         self.node_flavor: dict[str, str] = {}
-        # Talkable entities (SPEC.md §6/§7, Step 10 Stage 3) -- hand-seeded
+        # Talkable entities (Step 10 Stage 3) -- hand-seeded
         # (seed.py) or added by generation/npc.py's materialize once a quest
         # signals needs_new_npc. Also fightable and killable since "faction
-        # standing: combat trigger" (updates.md, resolved 2026-07-31, Chunk
+        # standing: combat trigger" (resolved 2026-07-31, Chunk
         # B) -- see npc_combat.py/remove_npc below; models.NPC itself still
         # carries no HP/combat fields (stats are resolved fresh per fight).
         self.npcs: dict[str, NPC] = {}
-        # Factions (SPEC.md §8, Step 10 Stage 4) -- fixed world content; a
+        # Factions (Step 10 Stage 4) -- fixed world content; a
         # player's relationship to one lives on Player.faction_standing, not
         # here. No live trigger assigns NPC.faction_id or moves standing yet
         # this stage -- data model + canon.RequirementKind.
@@ -83,8 +83,8 @@ class World:
         return npc
 
     def remove_npc(self, npc_id: str) -> None:
-        """Permanently removes an NPC -- killing one in combat (updates.md,
-        "faction standing: combat trigger," resolved 2026-07-31, Chunk B) is
+        """Permanently removes an NPC -- killing one in combat ("faction
+        standing: combat trigger," resolved 2026-07-31, Chunk B) is
         PERMANENT, a deliberate divergence from Step 10 Stage 6's
         wild-enemy-always-respawns rule. A no-op if npc_id isn't present
         (already removed, or never existed) rather than raising -- same
@@ -104,7 +104,7 @@ class World:
         *,
         one_way: bool = False,
     ) -> Link:
-        """Bidirectional-by-construction link (SPEC.md §3). Writes from->to,
+        """Bidirectional-by-construction link. Writes from->to,
         and unless one_way, atomically writes the reverse to->from too.
 
         Rejects a `direction` that `from_id` already has an outgoing link
@@ -191,7 +191,7 @@ class World:
         directional_block: bool = False,
     ) -> None:
         """Flips the from->to link to blocked. Unless directional_block, also
-        flips the reverse to->from row atomically (SPEC.md §3/§13)."""
+        flips the reverse to->from row atomically."""
         forward = self.get_link(from_id, to_id)
         if forward is None:
             raise WorldError(f"no link {from_id!r} -> {to_id!r}")
@@ -226,8 +226,8 @@ class World:
     # -- pathfinding ---------------------------------------------------
 
     def shortest_path(self, start_id: str, goal_id: str) -> Route | None:
-        """Dijkstra over OPEN links, cost = sum of travel_days (SPEC.md §3/§4:
-        travel_days is the real distance metric, hop count is not)."""
+        """Dijkstra over OPEN links, cost = sum of travel_days
+        (the real distance metric, hop count is not)."""
         if start_id == goal_id:
             return Route(links=[], total_days=0)
 

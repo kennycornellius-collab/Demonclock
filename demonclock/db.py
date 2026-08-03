@@ -1,5 +1,5 @@
-"""SQLite persistence. The save file is the single source of truth (SPEC.md §0
-pillar 2) — this module is the only place that reads/writes it.
+"""SQLite persistence. The save file is the single source of truth —
+this module is the only place that reads/writes it.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS player (
     free_by_day INTEGER,  -- NULL whenever not captured (setback.py, SPEC §11.1)
     game_over TEXT,  -- NULL while ongoing; 'victory'|'defeat' once resolved (boss.py, SPEC §11.1)
     faction_standing TEXT NOT NULL DEFAULT '{}',  -- JSON dict: faction_id -> tier (Step 10 Stage 4)
-    declared_intent TEXT  -- NULL if skipped at character creation (updates.md, resolved 2026-07-31)
+    declared_intent TEXT  -- NULL if skipped at character creation (resolved 2026-07-31)
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -83,17 +83,17 @@ CREATE TABLE IF NOT EXISTS scheduled_events (
 
 CREATE TABLE IF NOT EXISTS player_beliefs (
     node_id TEXT PRIMARY KEY,
-    data TEXT NOT NULL   -- JSON-encoded NodeBelief.to_dict() (SPEC.md §10)
+    data TEXT NOT NULL   -- JSON-encoded NodeBelief.to_dict()
 );
 
 CREATE TABLE IF NOT EXISTS event_log (
     sort_order INTEGER NOT NULL,
-    data TEXT NOT NULL   -- JSON-encoded LogEntry.to_dict() (SPEC.md §9, append-only)
+    data TEXT NOT NULL   -- JSON-encoded LogEntry.to_dict() (append-only)
 );
 
 CREATE TABLE IF NOT EXISTS content_pool (
     sort_order INTEGER NOT NULL,
-    data TEXT NOT NULL   -- JSON-encoded GeneratedItem.to_dict() (SPEC.md §7/§8)
+    data TEXT NOT NULL   -- JSON-encoded GeneratedItem.to_dict()
 );
 
 CREATE TABLE IF NOT EXISTS accepted_quests (
@@ -300,8 +300,8 @@ def save_game(conn: sqlite3.Connection, world, player, clock) -> None:
         (SAVE_VERSION,),
     )
     # JSON-encoded so `None` (no invasion content configured — most test
-    # worlds) round-trips distinctly from the string "wilds" (world.py,
-    # SPEC.md §11.1's boss build item).
+    # worlds) round-trips distinctly from the string "wilds" (world.py's
+    # boss build item).
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('invasion_origin_id', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

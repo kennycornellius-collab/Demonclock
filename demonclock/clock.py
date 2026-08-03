@@ -1,4 +1,4 @@
-"""In-game day clock. SPEC.md §4: days are the one canonical time unit everywhere."""
+"""In-game day clock. Days are the one canonical time unit everywhere."""
 from __future__ import annotations
 
 from dataclasses import dataclass

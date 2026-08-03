@@ -1,10 +1,9 @@
-"""The free-text LLM parser fallback (SPEC.md §6/§12 step 1's original
-AI-free scope, reopened per updates.md's own "arguably the most important
-item on this whole list" note) -- Chunk B of 3 (see updates.md's own entry
-for the full 3-chunk plan). Live, per-turn, NOT batch/pooled -- same family
+"""The free-text LLM parser fallback (parser.py's original
+AI-free scope, reopened per "arguably the most important
+item on this whole list") -- Chunk B of 3. Live, per-turn, NOT batch/pooled -- same family
 as narrator.py/dialogue.py, not director/story/quest/places/flavor/npc.
-Free text is already the rare "Something else..." escape hatch (SPEC.md
-§13's "most turns cost zero AI calls" invariant is unaffected by this
+Free text is already the rare "Something else..." escape hatch (the
+"most turns cost zero AI calls" invariant is unaffected by this
 existing), and this fallback specifically only ever runs once parser.py's
 own deterministic VERB_TABLE has already failed to match -- an even rarer
 path within an already-rare one.
@@ -21,8 +20,8 @@ entity id/direction afterward -- this module never resolves WHO/WHERE
 itself, only WHICH action, same division of labor Director/Story/Quest
 already have from Places/NPC.
 
-Schema-constrained the same way resolve.py's own AI fallback is (SPEC.md
-§8): the `action` enum is built FRESH each call from exactly the
+Schema-constrained the same way resolve.py's own AI fallback is:
+the `action` enum is built FRESH each call from exactly the
 caller-supplied `available_actions` list plus parser.ActionType.
 UNRECOGNIZED's own value as the "none of these" sentinel -- a schema-valid
 response structurally cannot name an action that isn't actually available

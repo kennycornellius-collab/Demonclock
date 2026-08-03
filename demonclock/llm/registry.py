@@ -6,7 +6,7 @@ both" decision from config.py, implemented here.
 A hard `LLMProviderError` from one provider moves on to the next entry in the
 chain; a `MalformedGenerationError` does NOT (see llm/__init__.py's docstring
 for why) -- it propagates straight out of `generate()` so the caller can
-discard the item, same as SPEC.md §1's "one retry, then discard" already does
+discard the item, same as the "one retry, then discard" contract already does
 inside a single adapter.
 """
 from __future__ import annotations

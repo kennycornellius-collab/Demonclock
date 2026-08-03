@@ -196,7 +196,7 @@ def test_advance_time_calls_the_batch_placeholder_exactly_once(monkeypatch):
 
     world = make_world("a")
     state = make_state(world, day=0)
-    advance_time(state, 12)  # a 12-day journey: 12 ticks, exactly 1 batch (SPEC.md §4/§13)
+    advance_time(state, 12)  # a 12-day journey: 12 ticks, exactly 1 batch
 
     assert len(calls) == 1
 
@@ -247,7 +247,7 @@ def make_linear_world(occupied_id: str = "a") -> World:
     return world
 
 
-# -- invasion spread (Stage 2, SPEC.md §3) ---------------------------------
+# -- invasion spread (Stage 2) ---------------------------------------------
 
 def test_apply_event_block_link_appends_a_history_entry():
     world = make_world("a", "b")
@@ -309,7 +309,7 @@ def test_price_shift_does_not_append_to_the_history_log():
 
 
 def test_apply_event_never_writes_player_belief():
-    # SPEC.md §13: belief is never silently overwritten by truth — only an
+    # Belief is never silently overwritten by truth — only an
     # explicit act of observation (actions.py) may write player.beliefs.
     world = make_world("a", "b")
     world.add_link("a", "b", "north", travel_days=1)
@@ -375,7 +375,7 @@ def test_invasion_spread_stalls_behind_a_blockage_but_still_reschedules():
 
     assert log == []
     assert world.nodes["b"].state == "peaceful"
-    # Stalled, not given up — SPEC.md §4 frames this as an ambient pressure
+    # Stalled, not given up — this is meant as an ambient pressure
     # source, so a temporary blockage must not permanently cancel the chain.
     assert len(world.scheduled_events) == 1
     assert world.scheduled_events[0].kind is EventKind.INVASION_SPREAD
@@ -482,7 +482,7 @@ def test_seeded_invasion_conquers_the_whole_starter_graph_on_schedule():
     # blizzard pair + invasion chain fully resolved — only the perpetual
     # PRICE_SHIFT chain (Stage 3) is still queued, which never stops
     assert [e.kind for e in world.scheduled_events] == [EventKind.PRICE_SHIFT]
-    # The invasion payoff (SPEC.md §11.1): the boss fight is now reachable
+    # The invasion payoff: the boss fight is now reachable
     # at wilds, the seeded invasion's origin — see seed.py/sim._reveal_demon_king.
     # _reveal_demon_king ALSO reopens every link this same invasion cut (see
     # its docstring) specifically so this stays true — total conquest would
@@ -495,7 +495,7 @@ def test_seeded_invasion_conquers_the_whole_starter_graph_on_schedule():
     assert state.world.shortest_path("village", "wilds") is not None
 
 
-# -- price shifts (Stage 3, SPEC.md §4/§10) --------------------------------
+# -- price shifts (Stage 3) -------------------------------------------------
 
 def test_price_shift_reschedules_indefinitely_even_when_nothing_moved():
     world = make_world("a")
@@ -536,7 +536,7 @@ def test_seeded_price_shift_tracks_the_invasion_approach():
     assert any(e.kind is EventKind.PRICE_SHIFT for e in world.scheduled_events)
 
 
-# -- behavior-profile decay (Stage 4, SPEC.md §5) --------------------------
+# -- behavior-profile decay (Stage 4) ---------------------------------------
 
 def test_advance_time_decays_behavior_counters_once_per_elapsed_day():
     state = make_state(day=0)
@@ -582,7 +582,7 @@ def test_blizzard_demo_blocks_then_reopens_the_pass():
     assert world.get_link("wilds", "road").status == "open"
 
 
-# -- warm-start batch (updates.md, resolved 2026-07-31) --------------------
+# -- warm-start batch (resolved 2026-07-31) ---------------------------------
 
 def test_run_warm_start_batch_is_a_noop_with_no_generation_registry():
     world = make_world("a")

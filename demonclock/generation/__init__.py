@@ -1,4 +1,4 @@
-"""The generation pipeline itself (SPEC.md §7): Director -> Story -> Quest ->
+"""The generation pipeline itself: Director -> Story -> Quest ->
 Places, running on top of the llm/ client layer (Chunk A) and writing to the
 content pool that already exists (canon.py/pool.py, Step 4). Built as three
 more chunks after llm/:

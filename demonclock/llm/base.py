@@ -1,6 +1,6 @@
 """The one interface every provider adapter implements. Deliberately a single
 method: generation in this project is always "here's a system+user prompt and
-a JSON schema, give me back JSON matching it" (SPEC.md §1) -- there's no
+a JSON schema, give me back JSON matching it" -- there's no
 streaming, no multi-turn chat, no tool-use loop to model, so the interface
 stays this small on purpose rather than wrapping each vendor SDK's full
 surface."""

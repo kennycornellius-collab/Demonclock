@@ -1,9 +1,9 @@
-"""Deterministic verb parser (SPEC.md §6). Only runs inside the free-text box —
+"""Deterministic verb parser. Only runs inside the free-text box —
 menus handle the common case without ever reaching this module.
 
 Novel phrasing that doesn't match a verb returns UNRECOGNIZED. The free-text
-LLM parser fallback (SPEC.md §12 step 1's original AI-free scope, reopened
-per updates.md) maps novel phrasing AND entirely novel action words to one
+LLM parser fallback (this module's original AI-free scope, later reopened)
+maps novel phrasing AND entirely novel action words to one
 of these same ActionTypes -- this module itself stays 100% deterministic and
 AI-free; the fallback is a separate later layer (game.handle_free_text) that
 only ever runs once this module's own VERB_TABLE match has already failed.
@@ -48,7 +48,7 @@ class ActionType(str, Enum):
     ATLAS = "atlas"
     QUESTS = "quests"
     ASK_AROUND = "ask_around"
-    # Player-facing journal/recap (updates.md, surfaced 2026-07-29) — same
+    # Player-facing journal/recap (surfaced 2026-07-29) — same
     # "menu-only until free text catches up" precedent as every other
     # Chunk A verb above.
     JOURNAL = "journal"
@@ -74,7 +74,7 @@ VERB_TABLE: dict[str, ActionType] = {
     "inventory": ActionType.INVENTORY,
     "inv": ActionType.INVENTORY,
     # Deliberately NOT "i" -- this parser only ever sees the free-text box
-    # (SPEC.md §6), where the single most common opening word of an
+    # (the free-text box), where the single most common opening word of an
     # ordinary first-person sentence ("I attack the wolf", "I open the
     # door") is the pronoun "I". A bare single-letter shorthand for
     # Inventory silently swallowed every such sentence as an inventory
@@ -108,7 +108,7 @@ VERB_TABLE: dict[str, ActionType] = {
     "recap": ActionType.JOURNAL,
 }
 
-# "look"/"l"/"check" (updates.md's "Open bugs": a smaller version of the
+# "look"/"l"/"check" (a smaller version of the
 # "i"/Inventory collision) -- actions._resolve_look never reads a target at
 # all, so unlike "go"/"talk" (which genuinely need trailing words), any text
 # after one of these is either nothing (bare "look") or an ordinary
@@ -140,7 +140,7 @@ def parse(text: str) -> Action:
         # Step 12 Chunk C (game.handle_free_text): tries the LLM parser
         # fallback next, only on this exact UNRECOGNIZED result -- this
         # module itself never calls out to an LLM, keeping it exactly as
-        # deterministic/AI-free as it always was (SPEC.md §6, "most turns
+        # deterministic/AI-free as it always was ("most turns
         # cost zero AI calls"). Whether that later fallback resolves the
         # sentence or not, THIS message is only what's shown if it's not
         # even attempted (e.g. no registry configured).

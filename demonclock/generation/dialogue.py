@@ -1,8 +1,8 @@
-"""The Dialogue role (SPEC.md §6/§7, Step 10 Stage 3): live, per-conversation
+"""The Dialogue role (Step 10 Stage 3): live, per-conversation
 NPC dialogue -- deliberately NOT batch-generated/pooled like Story/Quest/
 Places/Flavor. Talking to an NPC is a rare, deliberate player action, same
 bucket as narrator.narrate_combat_outcome's "an entire fight is already
-rare relative to Move/Look" reasoning (SPEC.md §13's "most turns cost zero
+rare relative to Move/Look" reasoning (the "most turns cost zero
 AI calls" invariant is unaffected). Pre-generating dialogue for every NPC in
 a batch's bounded context would also (a) waste calls on NPCs never spoken
 to and (b) go stale between generation and the moment a conversation
@@ -10,7 +10,7 @@ actually happens -- neither problem this module has, since it only ever
 runs at the moment the player initiates Talk.
 
 Two entry points, mirroring the "deterministic menu, free-text escape
-hatch" hybrid input model SPEC.md §6 already established for the player's
+hatch" hybrid input model already established for the player's
 own actions, applied here to one NPC conversation:
   - `run_dialogue_opening`: ONE call producing a greeting plus a small set
     of suggested topics, each with its own pre-written in-character
@@ -18,7 +18,7 @@ own actions, applied here to one NPC conversation:
   - `run_dialogue_reply`: a SEPARATE call, made only if the player instead
     types free text -- an in-character reply to whatever they said.
 
-v1 scope (a deliberate call, not an oversight -- see CLAUDE.md's Stage 3
+v1 scope (a deliberate call, not an oversight -- see Step 10's Stage 3
 bullet): EVERY dialogue path here is pure flavor. Neither a generated
 option nor a free-text reply can grant a quest, change gold/items, or
 shift faction standing -- there's no NPC-to-quest/faction linkage designed

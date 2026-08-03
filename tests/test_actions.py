@@ -130,7 +130,7 @@ def test_rest_with_nothing_new_to_leak_shows_no_newspaper():
 
 def test_resting_across_the_seeded_blizzard_surfaces_it_in_the_newspaper_once():
     # village is 1 hop from "road" (where the blizzard's BLOCK_LINK is logged,
-    # SPEC.md §10). The blizzard fires day 4, but at that exact moment 0 days
+    # The blizzard fires day 4, but at that exact moment 0 days
     # have elapsed since the log entry -- not yet reachable (needs >= 1 hop).
     # One more rest (day 4 -> 5) crosses the threshold.
     state = make_state()
@@ -156,7 +156,7 @@ def test_resting_again_does_not_re_announce_an_already_leaked_rumor():
 
 
 def test_move_never_shows_a_newspaper_even_across_the_same_span():
-    # Regression guard: the newspaper is Rest-only (SPEC.md §10's "on wake"),
+    # Regression guard: the newspaper is Rest-only ("on wake"),
     # never Move/fast-travel, even across a span that would make a rumor
     # newly reachable if it rested instead (village -> market is 1 day,
     # crossing the same day-4-to-5 threshold the Rest test above surfaces).

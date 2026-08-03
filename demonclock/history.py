@@ -1,7 +1,7 @@
-"""Append-only history/consequence log (SPEC.md §9 subset — third of Step 3's
+"""Append-only history/consequence log (third of Step 3's
 four stages, and the prerequisite Stage 4's rumor propagation needs).
 
-SPEC.md §9 draws two distinct stores: the live world/entity DB (pruned,
+The design draws two distinct stores: the live world/entity DB (pruned,
 mutated in place — Node.state, Link.status, ...) and this log, small facts
 that are NEVER deleted ("the permanent memory that makes the world feel
 like it remembers the player"). Nothing reads this log yet — that's
@@ -11,7 +11,7 @@ invasion payoff.
 
 `kind` reuses `events.EventKind` rather than a parallel string enum — same
 "enumerated vocabulary, never free text" discipline as everywhere else in
-the project (SPEC.md §13).
+the project.
 """
 from __future__ import annotations
 
@@ -47,5 +47,5 @@ class LogEntry:
 
 def record(log: list[LogEntry], day: int, node_id: str, kind: EventKind, description: str) -> None:
     """Append one fact. The ONLY way an entry enters the log — never removed,
-    never edited (SPEC.md §9: "append-only, never deleted")."""
+    never edited ("append-only, never deleted")."""
     log.append(LogEntry(day=day, node_id=node_id, kind=kind, description=description))

@@ -1,4 +1,4 @@
-"""Setback states (SPEC.md §11.1): an ordinary lost fight is a recoverable
+"""Setback states: an ordinary lost fight is a recoverable
 setback, never a game-over — true game-over is reserved for the demon king
 and designated bosses (not built yet). This implements one coherent "captured"
 package rather than several distinct mechanical systems for the spec's
@@ -7,7 +7,7 @@ captured/kidnapped/robbed/jailed language: some gold is taken on capture (the
 actions._resolve_move) — until they either pay a ransom or wait out a fixed
 number of days.
 
-Two independent recovery paths, per SPEC.md §11.1's own wording ("a payable
+Two independent recovery paths, per the design's own wording ("a payable
 ransom, a timed escape event"): `pay_ransom` (needs gold) and the guaranteed
 timed release checked by `check_escape` (needs nothing but waiting). The
 timed release is what actually satisfies "never an unwinnable soft-lock" — it
@@ -19,7 +19,7 @@ from . import journal
 from .models import Player
 
 # Placeholder tuning constants — same "start rough, calibrate by feel" status
-# as combat.py's DOT_DURATION etc. (SPEC.md §11).
+# as combat.py's DOT_DURATION etc.
 GOLD_DOCK_FRACTION = 0.5
 RANSOM_COST = 50
 ESCAPE_AFTER_DAYS = 3

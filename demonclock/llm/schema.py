@@ -1,10 +1,9 @@
 """A tiny JSON-Schema-SUBSET validator -- not a general-purpose implementation
 (no $ref, no oneOf/anyOf, no format/pattern). Every schema this project
-declares is a flat-ish "object with typed properties" shape (SPEC.md §1's
+declares is a flat-ish "object with typed properties" shape (the
 structured-output requirement), so this covers exactly what's needed rather
 than pulling in a third-party jsonschema dependency for a handful of keyword
-checks (the project is deliberately zero third-party dependencies, per
-CLAUDE.md's stack decision).
+checks (the project is deliberately zero third-party dependencies).
 
 Supported keywords: type (object/string/integer/number/boolean/array/null),
 properties, required, items, enum. Anything else in a schema dict is ignored
@@ -18,7 +17,7 @@ integer-typed field as `5.0` is still schema-valid, not "malformed." A
 non-whole float (`5.5`) still correctly fails — this only widens what
 counts as an integer, it doesn't loosen "number" into accepting non-integer
 values for an "integer"-typed field. Confirmed against a real (not
-monkeypatched) Gemini call — see progress.md's Step 8 P6 entry.
+monkeypatched) Gemini call — see Step 8 P6's build entry.
 """
 from __future__ import annotations
 
@@ -45,7 +44,7 @@ def matches_schema(value: object, schema: dict) -> bool:
     """True if `value` structurally matches `schema`. Never raises -- a
     malformed schema or an unexpected value both simply fail the match,
     since the only thing a caller does with the result is decide "retry or
-    discard" (SPEC.md §1)."""
+    discard"."""
     try:
         return _matches(value, schema)
     except (TypeError, KeyError):

@@ -1,8 +1,8 @@
-"""The Story/Situation agent (SPEC.md §7 step 3): given the Director's
+"""The Story/Situation agent: given the Director's
 intent (Chunk B) and the bounded batch context, produces ONE "situation" --
 the tension that plausibly emerges *here* (village -> blight; noble cornering
 the herb trade). Two streams keep the world from becoming an echo of the
-player (SPEC.md §7's "avoid the echo chamber"):
+player (the "avoid the echo chamber" design):
   - "responsive": shaped by the player's own current node/behavior.
   - "world_driven": pushed by the simulation independent of the player
     (invasion/economy pressure already visible in the retrieved context).

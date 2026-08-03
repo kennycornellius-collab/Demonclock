@@ -1,6 +1,6 @@
 """Core data shapes. Plain dataclasses — no behavior, no persistence here.
 
-Attribute set is fixed per SPEC.md §5 / §13: pools (HP, MANA) and stats (STR, MAGIC,
+Attribute set is fixed: pools (HP, MANA) and stats (STR, MAGIC,
 AGILITY, DEFENSE, CHARISMA, PERCEPTION, LUCK) are named fields on Player, not a dict —
 there is deliberately no API to add or remove an attribute.
 """
@@ -13,7 +13,7 @@ from .journal import JournalEntry
 from .knowledge import NodeBelief
 from .skills import Skill
 
-# Reverse-direction table for the bidirectional link constructor (SPEC.md §3).
+# Reverse-direction table for the bidirectional link constructor.
 OPPOSITE_DIRECTION = {
     "north": "south",
     "south": "north",
@@ -35,7 +35,7 @@ class Node:
     tags: list[str] = field(default_factory=list)
     last_event_day: int = 0
     prices: dict[str, int] = field(default_factory=dict)  # good_id -> current price (SPEC §4/§10)
-    # "Faction standing: trade trigger" (updates.md, resolved 2026-07-31,
+    # "Faction standing: trade trigger" (resolved 2026-07-31,
     # Chunk D): which Faction (if any) trade at this node benefits --
     # mirrors NPC.faction_id exactly. None is a perfectly ordinary,
     # unaffiliated node (most of them); no generator assigns this yet, same
@@ -66,7 +66,7 @@ class InventoryItem:
 class NPC:
     """Step 10 Stage 3 (SPEC §6/§7): a talkable entity. Originally "never a
     fight target" — reversed by "faction standing: combat trigger"
-    (updates.md, resolved 2026-07-31, built as Chunks A-D): an NPC CAN now
+    (resolved 2026-07-31, built as Chunks A-D): an NPC CAN now
     be fought (see npc_combat.py), but still carries no HP/combat fields of
     its own here — stats are resolved fresh from an archetype (npc_combat.
     archetype_for, keyed off `tags` below) exactly the same way
@@ -113,16 +113,16 @@ class Player:
     inventory: list[InventoryItem] = field(default_factory=list)
     skills: list[Skill] = field(default_factory=list)
     # Set the moment a rule-breaking (fair-cost-undercutting) skill is CAST,
-    # not when it's created (SPEC.md §6b) — see combat.run_combat.
+    # not when it's created — see combat.run_combat.
     creative_mode_used: bool = False
     behavior: BehaviorProfile = field(default_factory=BehaviorProfile)
-    # Setback state (SPEC.md §11.1): an ordinary lost fight captures the
+    # Setback state: an ordinary lost fight captures the
     # player rather than ending the game — see setback.py. free_by_day is
     # None whenever not captured.
     captured: bool = False
     ransom_cost: int = 0
     free_by_day: int | None = None
-    # Player belief layer (SPEC.md §10): node_id -> last-observed snapshot.
+    # Player belief layer: node_id -> last-observed snapshot.
     # Written ONLY by knowledge.observe_node — never by the world-sim tick.
     beliefs: dict[str, NodeBelief] = field(default_factory=dict)
     # Step 6 Chunk B: quests the player accepted from the content pool
@@ -145,18 +145,18 @@ class Player:
     # standing off that default (quest turn-in, via factions.adjust_standing --
     # a 2026-07-30 follow-up).
     faction_standing: dict[str, str] = field(default_factory=dict)
-    # Player-facing journal/recap (updates.md, surfaced 2026-07-29): the
+    # Player-facing journal/recap (surfaced 2026-07-29): the
     # player's own story so far -- places first visited, fights won/lost,
     # quests completed, captures/escapes -- see journal.py for why this is
     # deliberately separate from World.event_log rather than reusing it.
     # Written ONLY by journal.record, from combat.py/setback.py/quests.py/
     # actions.py/game.py at the point each of those facts becomes true.
     journal: list[JournalEntry] = field(default_factory=list)
-    # "Declared intent" (updates.md, resolved 2026-07-31): free text the
+    # "Declared intent" (resolved 2026-07-31): free text the
     # player types once at character creation ("what are you setting out to
     # become?") -- skippable, None if skipped. Fixed forever once set; purely
     # a generation-prompt tone nudge (behavior.effective_role_hint), never a
-    # mechanical/canon fact -- SPEC.md §0 pillar 3 ("roles are emergent,
+    # mechanical/canon fact -- design pillar 3 ("roles are emergent,
     # never assigned") stays intact, since derived_role_hint always wins once
     # real play says anything beyond its own neutral default.
     declared_intent: str | None = None

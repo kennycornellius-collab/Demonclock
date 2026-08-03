@@ -1,4 +1,4 @@
-"""Chunk A of "faction standing: combat trigger" (updates.md, resolved
+"""Chunk A of "faction standing: combat trigger" (resolved
 2026-07-31): the archetype-to-stat-block foundation, tested in isolation --
 no UI, no killing, no standing changes exist yet (Chunks B/C)."""
 from demonclock.combat import Combatant
@@ -70,7 +70,7 @@ def test_combatant_for_npc_stats_scale_with_archetype_strength():
 
 def test_combatant_for_npc_sets_proper_name_true():
     # So combat._enemies_desc skips its usual "the X" prefix for an NPC's
-    # own proper name (updates.md "Open bugs," fixed 2026-07-31).
+    # own proper name ("Open bugs," fixed 2026-07-31).
     assert combatant_for_npc(make_npc(name="Hana the Miller")).proper_name is True
 
 

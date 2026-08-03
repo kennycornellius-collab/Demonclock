@@ -1,11 +1,11 @@
-"""The ambient-flavor agent (SPEC.md §2's `NARRATOR: describe the outcome`
+"""The ambient-flavor agent (the `NARRATOR: describe the outcome`
 step, generalized to "describe the place" — Step 7 Chunk C). Writes ONE
 short, purely atmospheric line per node in the bounded batch context
 (context.py's current node + immediate neighbors — the same slice every
 other batch agent already reads from, so this adds no new "read the whole
 graph" risk). Never a fact, quest, or anything the player could act on —
 pure sensory/mood color, consistent with the node's own given state, which
-is why this carries no precondition manifest (SPEC.md §8's canon check
+is why this carries no precondition manifest (the canon check
 exists to validate state-implying content; flavor never implies one).
 
 Unlike `narrator.py`'s `reword_rumor`/`narrate_combat_outcome` (presentation-
@@ -20,7 +20,7 @@ node simply persists until a later batch's context happens to cover it
 again, an accepted "start rough" simplification, same status as every other
 placeholder tuning constant in this codebase) and PULLED, never pushed live —
 `actions._resolve_look`/arrival narration just reads whatever's already
-there, so Move/Look themselves never cost an AI call (SPEC.md §13).
+there, so Move/Look themselves never cost an AI call.
 
 Step 7 Chunk D added the player's `derived_role_hint` (already present in
 `context["player"]`, just not previously threaded into this agent's own

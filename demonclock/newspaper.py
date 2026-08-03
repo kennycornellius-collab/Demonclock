@@ -1,4 +1,4 @@
-"""The push newspaper (SPEC.md §10, Step 6 Chunk A): a short wake-time summary
+"""The push newspaper (Step 6 Chunk A): a short wake-time summary
 of info that LEAKED to the player's node while they slept.
 
 Distinct from `game.handle_ask_around` (the pull-primary channel, which shows
@@ -7,7 +7,7 @@ and precise — "leaked" means exactly the rumor objects that started reaching
 the node BETWEEN falling asleep and waking up, not the full cumulative set.
 Reuses `rumors.rumors_reaching` unchanged; this module only diffs two
 snapshots of it and formats the result. Triggers ONLY from Rest (sleeping) —
-SPEC.md §10 frames the newspaper specifically as "on wake," distinct from the
+The design frames the newspaper specifically as "on wake," distinct from the
 batch trigger itself, which already fires on any elapsed time (move, rest,
 fast-travel alike, since Step 5 Chunk B).
 """

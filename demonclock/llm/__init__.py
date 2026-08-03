@@ -1,6 +1,6 @@
-"""Provider-agnostic LLM client layer (SPEC.md §1/§7, Step 5 Chunk A).
+"""Provider-agnostic LLM client layer (Step 5 Chunk A).
 
-SPEC.md §1 originally resolved on a single Anthropic-only generation engine;
+The design originally resolved on a single Anthropic-only generation engine;
 that decision was deliberately reopened at the user's request so different
 generation roles (Director/Story/Quest/Places/entity-resolution) can use
 whichever LLM suits them, and so a role can fail over to a second provider
@@ -17,7 +17,7 @@ Two failure modes (errors.py) map to the two things that can go wrong:
     valid against the requested schema even after one retry. NOT a fallback
     trigger -- a different provider would face the same "the caller's prompt
     produced bad output" problem, so this bubbles up to the caller to
-    discard the item (SPEC.md §1/§8: the pool absorbs the loss).
+    discard the item (the pool absorbs the loss).
 
 Only Gemini (providers/gemini.py) and a deterministic offline `mock`
 (providers/mock.py, used by every test and by real play when no key is

@@ -1,4 +1,4 @@
-"""World truth vs. player belief (SPEC.md §10, first of Step 3's stages).
+"""World truth vs. player belief (first of Step 3's stages).
 
 World truth lives on `Node` itself and updates on the world's own timer
 (sim.py) regardless of what the player knows. Player belief is a separate,
@@ -6,7 +6,7 @@ per-player snapshot of what that node looked like the last time the player
 actually stood on it. Fog is simply the gap between the two — a node with
 no belief entry has never been observed at all.
 
-The one non-negotiable invariant (SPEC.md §13): belief is never silently
+The one non-negotiable invariant: belief is never silently
 overwritten by truth. `observe_node` is the ONLY function in the codebase
 allowed to write a belief entry, and it is only ever called from an
 explicit act of physical observation (arriving at / looking around a node)

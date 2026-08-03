@@ -5,7 +5,7 @@ proving the registry's fallback-chain behavior (one MockClient configured to
 always error, a second configured to succeed).
 
 Honors the same one-retry-then-discard contract every real adapter must
-(SPEC.md §1): a canned response that doesn't match the requested schema is
+(the design): a canned response that doesn't match the requested schema is
 "malformed," and generate_structured tries exactly one more queued response
 before raising MalformedGenerationError -- the same shape GeminiClient
 implements against a real API, just driven by a pre-loaded queue instead of

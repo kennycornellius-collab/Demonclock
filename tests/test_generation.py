@@ -482,7 +482,7 @@ def test_materialize_adds_a_bidirectional_link_with_the_proposed_travel_days():
     forward = state.world.get_link("village", "abandoned_mine")
     reverse = state.world.get_link("abandoned_mine", "village")
     assert forward.travel_days == 2
-    assert reverse is not None  # bidirectional-by-construction (SPEC.md §3)
+    assert reverse is not None  # bidirectional-by-construction
     assert reverse.direction == "south"  # the known opposite of "north"
 
 
@@ -938,7 +938,7 @@ def test_flavor_system_prompt_mentions_derived_role_hint():
 
 
 # -- Quest prompt documents each RequirementKind's target shape ------------
-# Regression coverage for the fix noted in updates.md's "Open TODOs": Gemini
+# Regression coverage for a real, live, repeatable bug fix: Gemini
 # kept emitting malformed requirement targets (e.g. NODE_STATE with no
 # node_id) because the prompt only ever named the legal `kind` values, never
 # each kind's required `target` keys.

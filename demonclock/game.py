@@ -1,4 +1,4 @@
-"""Menu-driven REPL (SPEC.md §6): Move / Interact / Inventory / Rest /
+"""Menu-driven REPL: Move / Interact / Inventory / Rest /
 Something else... The free-text box is the only place the parser runs.
 
 Step 12 Chunk C: `handle_free_text` is now the real dispatcher the free-text
@@ -55,7 +55,7 @@ MENU = """
 11) Save & Quit
 """
 
-# Shown instead of MENU while Player.captured is set (SPEC.md §11.1) — Move/
+# Shown instead of MENU while Player.captured is set — Move/
 # Interact/Skills are unreachable from here; only the two recovery paths
 # (setback.pay_ransom, waiting via the ordinary Rest handler) plus Save & Quit.
 CAPTURED_MENU = """
@@ -66,7 +66,7 @@ Ransom: {ransom} gold (you have {gold} gold). Free by day {free_day} regardless.
 3) Save & Quit
 """
 
-# SPEC.md §11.1: the demon-king fight is the one TRUE, permanent game-over —
+# The demon-king fight is the one TRUE, permanent game-over —
 # checked at the top of the main loop, before MENU/CAPTURED_MENU, so a
 # resolved fight never falls through to ordinary play again.
 GAME_OVER_MESSAGES = {
@@ -79,12 +79,12 @@ GAME_OVER_MESSAGES = {
 # relevant handful instead of an unbounded dump of everything reachable.
 MAX_RUMORS_SHOWN = 5
 
-# "Faction standing: combat trigger" (updates.md, resolved 2026-07-31,
-# Chunk C): two-tier penalty against a faction-affiliated NPC -- merely
+# Faction standing: combat trigger (resolved 2026-07-31, Chunk C):
+# two-tier penalty against a faction-affiliated NPC -- merely
 # attacking (even if the fight is fled or lost before a kill) already
 # costs a moderate dip; an actual kill stacks the severe penalty ON TOP of
 # that (never instead of it). Same "start rough, calibrate by feel" status
-# as every other tuning constant in this codebase (SPEC.md §11).
+# as every other tuning constant in this codebase.
 NPC_ATTACK_STANDING_PENALTY_TIERS = 1
 NPC_KILL_STANDING_PENALTY_TIERS = 2
 
@@ -125,7 +125,7 @@ def _available_context_actions(state: GameState, node) -> set[ActionType]:
     option-building AND the free-text dispatcher's availability check
     (Step 12 Chunk C) both read, so the two can never drift out of sync.
     Mirrors `handle_interact`'s own "demon_king short-circuits everything
-    else" rule (SPEC.md §6b/§11.1)."""
+    else" rule."""
     if "demon_king" in node.tags:
         return {ActionType.FIGHT}
     available: set[ActionType] = set()
@@ -141,7 +141,7 @@ def _available_context_actions(state: GameState, node) -> set[ActionType]:
 
 
 def handle_interact(state: GameState) -> None:
-    # "Bosses as situations, not HP checks" (SPEC.md §6b/§11.1), Chunk B:
+    # "Bosses as situations, not HP checks," Chunk B:
     # once sim._reveal_demon_king has tagged this node (the invasion has
     # fully conquered the graph), Interact here means the real fight, not
     # any of the ordinary options below.
@@ -166,7 +166,7 @@ def handle_interact(state: GameState) -> None:
         options.append(("Fight", lambda: _handle_fight(state, enemy_ids)))
     for npc in state.world.npcs_at(node.id):
         options.append((f"Talk to {npc.name}", lambda npc=npc: _handle_talk(state, npc)))
-        # "Faction standing: combat trigger" (updates.md, resolved
+        # Faction standing: combat trigger (resolved
         # 2026-07-31, Chunk B): menu-only for now, same as Talk/Trade/Craft
         # originally were before Step 12's later, separate free-text pass --
         # not wired into ActionType/_available_context_actions/the
@@ -196,7 +196,7 @@ def handle_interact(state: GameState) -> None:
 
 
 def _handle_trade(state: GameState, node) -> None:
-    """Step 10 Stage 1 (SPEC.md §6/§12): buy/sell against `node.prices`.
+    """Step 10 Stage 1: buy/sell against `node.prices`.
     Single price both directions -- see trade.py's own docstring for why
     (profit is geographic, via economy.py's threat multiplier, not an
     in-node spread)."""
@@ -228,12 +228,12 @@ def _handle_trade(state: GameState, node) -> None:
 
 
 def _handle_talk(state: GameState, npc: NPC) -> None:
-    """Step 10 Stage 3 (SPEC.md §6/§7): a live, one-call-per-conversation
+    """Step 10 Stage 3: a live, one-call-per-conversation
     dialogue exchange — see generation/dialogue.py for why this is never
     batch-generated/pooled like Story/Quest/Places/Flavor. The AI dialogue
     itself (a generated option or free text) is still pure flavor — nothing
     SAID here can grant a quest, change gold/items, or shift standing. NPC-
-    quest link follow-up (updates.md, surfaced 2026-07-29): a Talk visit
+    quest link follow-up (surfaced 2026-07-29): a Talk visit
     now ALSO surfaces (via the engine-driven, canon-checked content pool,
     never the AI dialogue) any pooled quest tied to this specific NPC —
     same accept/decline flow handle_quests already offers, just discovered
@@ -292,7 +292,7 @@ def _apply_npc_standing_penalty(state: GameState, npc: NPC, tiers: int, reason: 
 
 
 def _handle_attack_npc(state: GameState, npc: NPC) -> None:
-    """"Faction standing: combat trigger" (updates.md, resolved 2026-07-31),
+    """"Faction standing: combat trigger" (resolved 2026-07-31),
     Chunk B: NPCs stay neutral -- unlike WILD_ENEMY_BY_NODE foes (which
     always fight on Interact), an NPC never initiates; this is the only way
     a fight against one ever starts. Reuses combat.run_group_combat
@@ -305,7 +305,7 @@ def _handle_attack_npc(state: GameState, npc: NPC) -> None:
     (no respawn, unlike a wild encounter node -- Step 10 Stage 6's
     always-respawns rule is deliberately NOT extended to NPCs).
 
-    Chunk C (updates.md): standing is two-tier -- merely starting the
+    Chunk C: standing is two-tier -- merely starting the
     fight already costs a moderate dip, applied HERE regardless of how the
     fight ends (even a flee or a loss doesn't undo it -- you already
     showed your hand); an actual kill stacks the severe penalty ON TOP,
@@ -358,7 +358,7 @@ def _handle_attack_npc(state: GameState, npc: NPC) -> None:
 
 
 def _handle_craft(state: GameState, node) -> None:
-    """Step 10 Stage 5 (SPEC.md §6/§12): craft from crafting.RECIPES's fixed
+    """Step 10 Stage 5: craft from crafting.RECIPES's fixed
     hand-authored table at a "workshop"-tagged node."""
     print(f"--- Crafting at {node.name} ---")
     recipes = list(crafting.RECIPES.values())
@@ -434,7 +434,7 @@ def _handle_fight(state: GameState, enemy_ids: list[str]) -> None:
 
 def _handle_demon_king(state: GameState) -> None:
     """The real fight (boss.DEMON_KING_ENCOUNTER). Unlike handle_interact's
-    ordinary wild-foe branch, a loss here is permanent (SPEC.md §11.1) — the
+    ordinary wild-foe branch, a loss here is permanent — the
     epilogue itself is printed by run()'s game_over check next loop, not
     here, so it only ever prints once regardless of how this function
     returns."""
@@ -509,11 +509,11 @@ def handle_rest(state: GameState) -> None:
 
 
 def handle_atlas(state: GameState) -> None:
-    """Discovered-places view + the fast-travel trigger (SPEC.md §3/§10):
+    """Discovered-places view + the fast-travel trigger:
     lists what the player BELIEVES about each known node — last-seen state
     and day, not live world truth — then offers to walk a full route there
     in one time-costed jump. An ASCII adjacency map (mapview.py, "text/
-    ASCII map for Atlas" follow-up, updates.md, surfaced 2026-07-29) prints
+    ASCII map for Atlas" follow-up, surfaced 2026-07-29) prints
     above the list when at least 2 known places can be laid out on a
     compass grid — the numbers on the map match this list's own numbering,
     so a place found on the map can be fast-traveled to by typing the same
@@ -566,7 +566,7 @@ def handle_atlas(state: GameState) -> None:
 
 
 def handle_ask_around(state: GameState) -> None:
-    """Pull-primary info gathering (SPEC.md §10): rumors reaching the
+    """Pull-primary info gathering: rumors reaching the
     player's CURRENT node, engine-derived from history.LogEntry, never
     AI-invented. Distinct from Atlas: a rumor carries its own confidence
     and may be distorted by distance, whereas Atlas beliefs are only ever
@@ -585,7 +585,7 @@ def handle_ask_around(state: GameState) -> None:
 
 
 def handle_journal(state: GameState) -> None:
-    """Player-facing journal/recap (updates.md, surfaced 2026-07-29): the
+    """Player-facing journal/recap (surfaced 2026-07-29): the
     player's own story so far (places first visited, fights won/lost,
     quests completed, captures/escapes) — see journal.py for why this is a
     separate, dedicated log rather than reusing world.event_log (which is
@@ -603,7 +603,7 @@ def handle_journal(state: GameState) -> None:
 
 def handle_quests(state: GameState) -> None:
     """Step 6 Chunk B: the first real player-facing surface for content
-    generation's output (SPEC.md §7 — items are "written to a content pool
+    generation's output (items are "written to a content pool
     the daytime loop pulls from," previously true only in the abstract).
     Step 10 Stage 2 adds turn-in: check each accepted quest's own
     `completion` manifest (quests.check_completion) against LIVE state and
@@ -638,7 +638,7 @@ def handle_quests(state: GameState) -> None:
 
 def _offer_quest(state: GameState, item: pool.GeneratedItem) -> None:
     """Shared by handle_quests' generic pull and _handle_talk's NPC-tied
-    pull (NPC-quest link follow-up, updates.md, surfaced 2026-07-29) --
+    pull (NPC-quest link follow-up, surfaced 2026-07-29) --
     same print/prompt/accept shape either way, just a different source for
     `item`."""
     print(f"  {item.payload.get('title', item.id)}")
@@ -653,7 +653,7 @@ def _offer_quest(state: GameState, item: pool.GeneratedItem) -> None:
         state.player.accepted_quests.append({**item.payload, "id": item.id})
         print("Quest accepted.")
     else:
-        # Deliberately NOT re-queued (SPEC.md §11: start rough, calibrate
+        # Deliberately NOT re-queued (start rough, calibrate
         # by feel) — a declined offer disappearing rather than going back
         # into the pool for a later pull is the simplest behavior for this
         # chunk; revisit if this ever reads as too punishing in play.
@@ -688,7 +688,7 @@ def _choose_stat(prompt: str) -> skills.StatType:
 def _choose_effects() -> list[skills.Effect]:
     kinds = list(skills.EffectKind)
     chosen: list[skills.Effect] = []
-    print("\nCompose effects from the enumerated vocabulary (SPEC.md §6b — never free text).")
+    print("\nCompose effects from the enumerated vocabulary below — never free text.")
     while True:
         print("Available effects:")
         for i, kind in enumerate(kinds, start=1):
@@ -940,7 +940,7 @@ def _resolve_talk_target(state: GameState, npcs: list[NPC], target: str | None) 
 
 
 def _report_ai_connectivity(config: GenerationConfig, registry: LLMRegistry) -> None:
-    """Startup API-connectivity self-test (updates.md, surfaced
+    """Startup API-connectivity self-test (surfaced
     2026-07-28): one cheap ping (llm/selftest.py) so a configured-but-
     unreachable key (the exact DEFAULT_MODEL 404 bug that motivated this)
     gets a clear signal instead of every later generation call silently
@@ -979,7 +979,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         print(f"Welcome back, {player.name}. Resuming on day {clock.current_day}.")
     else:
         name = input("Name your character: ").strip() or "Hero"
-        # "Declared intent" (updates.md, resolved 2026-07-31): a one-time,
+        # Declared intent (resolved 2026-07-31): a one-time,
         # skippable, purely flavor-tone nudge -- see Player.declared_intent
         # and behavior.effective_role_hint for why this never becomes an
         # assigned role.
@@ -989,7 +989,7 @@ def run(save_path: str = db.DEFAULT_SAVE_PATH) -> None:
         state = new_game(name, declared_intent)
         state.generation = registry
         print(f"A new journey begins, {state.player.name}.")
-        # Warm-start batch (updates.md, resolved 2026-07-31): so day 0
+        # Warm-start batch (resolved 2026-07-31): so day 0
         # isn't blank -- see sim.run_warm_start_batch's own docstring.
         sim.run_warm_start_batch(state)
 

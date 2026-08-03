@@ -66,7 +66,7 @@ def test_validate_skill_accepts_buff_with_stat():
 
 
 def test_validate_skill_never_rejects_on_power_alone():
-    # Skill creation is unrestricted by design (SPEC.md §6b) — a 0-cost,
+    # Skill creation is unrestricted by design — a 0-cost,
     # absurdly powerful skill is legal; validate_skill only guards the enum
     # boundary, never balance.
     skill = make_skill(mana_cost=0, base_damage=99999)
@@ -402,14 +402,14 @@ def test_cooldown_clears_after_enough_upkeep_ticks():
     assert "onslot" not in combatant.cooldowns
 
 
-# -- fair-cost calculator (Stage 3, SPEC.md §6b) --------------------------
+# -- fair-cost calculator (Stage 3) ----------------------------------------
 
 def test_compute_magnitude_matches_spec_formula():
-    # base 100, mult 1.5, stat 10 -> (100*1.5)+10 = 160, SPEC.md §6b's example
+    # base 100, mult 1.5, stat 10 -> (100*1.5)+10 = 160, the damage formula's own example
     assert compute_magnitude(base_damage=100, attribute_multiplier=1.5, stat_value=10) == 160
 
 
-# -- skill growth (updates.md, resolved 2026-07-31) -----------------------
+# -- skill growth (resolved 2026-07-31) -------------------------------------
 
 def test_compute_grown_magnitude_returns_base_unchanged_at_zero_uses():
     assert compute_grown_magnitude(100, use_count=0) == 100

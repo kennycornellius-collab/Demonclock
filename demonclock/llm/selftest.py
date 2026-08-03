@@ -1,6 +1,5 @@
-"""A startup API-connectivity self-test (updates.md, surfaced 2026-07-28
-directly from the Gemini DEFAULT_MODEL 404 bug -- see update_progress.md's
-2026-07-28 entry -- where every generation call was silently failing with
+"""A startup API-connectivity self-test (surfaced 2026-07-28
+directly from the Gemini DEFAULT_MODEL 404 bug, where every generation call was silently failing with
 zero indication anything was even configured). Runs once at startup
 (game.run), never blocks or fails startup either way -- the game must run
 fully with AI unconfigured OR unreachable; this is purely a "tell the
@@ -8,7 +7,7 @@ player which mode they're in" UX addition, never a new hard dependency on
 AI being reachable.
 
 One cheap ping call against whichever role happens to be configured first
-(SPEC.md §1's per-role routing means different roles COULD point at
+(per-role routing means different roles COULD point at
 different providers, but GenerationConfig.from_env()'s own default routes
 every role to the same chain, so any one role is representative of the
 whole configured setup in the common case) -- exercises the exact same

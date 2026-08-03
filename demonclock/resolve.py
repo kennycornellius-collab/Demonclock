@@ -1,6 +1,6 @@
-"""Entity resolution (SPEC.md §8, third of Step 4's three chunks): mapping
+"""Entity resolution (third of Step 4's three chunks): mapping
 a text reference (e.g. "the old lord") to an existing entity's ID against
-a small, caller-retrieved shortlist — NEVER the whole DB (SPEC.md §8's
+a small, caller-retrieved shortlist — NEVER the whole DB (the same
 "bounded context" invariant, reused here: "the checker loads only the
 handful of entities the manifest names — never 500").
 
@@ -11,11 +11,11 @@ contains the other character-for-character). A reference still ambiguous
 after both passes falls to a small AI call (Step 5 Chunk D) ONLY if a
 `registry` was supplied — the exact two-tier "deterministic match first, LLM
 fallback only on genuine ambiguity" shape `parser.py` already established
-for player input (SPEC.md §6) — most resolutions cost zero AI calls, same as
+for player input — most resolutions cost zero AI calls, same as
 most turns. Passing no `registry` (the default) keeps this module's pure
 zero-AI behavior exactly as it always was.
 
-Identity is always an id, never a name (SPEC.md §8) — `resolve_entity`
+Identity is always an id, never a name — `resolve_entity`
 returns an id or `None`, and NEVER fabricates a new entity for a reference
 it can't confidently place: "if the entity resolver finds no confident
 match on the shortlist, the item goes to repair or is rejected... It must
@@ -78,7 +78,7 @@ def resolve_entity(
         return exact[0]
     if len(exact) > 1:
         # Same-name collision — exactly why identity is an id, never a
-        # name (SPEC.md §8). Ambiguous, not resolved.
+        # name. Ambiguous, not resolved.
         return None
 
     ref_tokens = _tokenize(reference_text)

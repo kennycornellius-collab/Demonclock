@@ -1,5 +1,5 @@
-"""The canon check (SPEC.md §8) — the "immune system" gating every
-generated item before it's committed as real (SPEC.md §0 pillar 6: "AI
+"""The canon check — the "immune system" gating every
+generated item before it's committed as real ("AI
 proposes, engine enforces invariants"). This stage builds only the
 pure-code checker half: a precondition manifest is a tidy list of
 booleans validated against the live DB, never parsed prose ("the checker
@@ -7,9 +7,9 @@ validates a tidy list of booleans against the DB — it does NOT parse
 prose for hidden landmines").
 
 `RequirementKind` is a fixed enumerated vocabulary, same "enum, never free
-text" discipline as `skills.py`'s effects / `events.py`'s `EventKind`
-(SPEC.md §13). It only covers the entity types that actually exist in the
-engine today (nodes, links, the player) — SPEC.md §8's own worked example
+text" discipline as `skills.py`'s effects / `events.py`'s `EventKind`.
+It only covers the entity types that actually exist in the
+engine today (nodes, links, the player) — the design's own worked example
 `faction_standing(merchants): >= neutral` has no engine-side analog yet
 (no factions exist), so it's deliberately not in this enum; extend it
 when the entity type it checks actually exists, same discipline

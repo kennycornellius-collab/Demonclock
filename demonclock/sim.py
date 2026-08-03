@@ -1,23 +1,23 @@
-"""The world-simulation tick engine (SPEC.md §12 step 2). Stage 1 built the
+"""The world-simulation tick engine. Stage 1 built the
 generic scheduled-event machinery (timers); Stage 2 added the demon-king
-invasion (SPEC.md §3) as a self-rescheduling chain of `INVASION_SPREAD`
-events; Stage 3 adds price shifts (SPEC.md §4/§10) as a similar
+invasion as a self-rescheduling chain of `INVASION_SPREAD`
+events; Stage 3 adds price shifts as a similar
 self-rescheduling `PRICE_SHIFT` chain that never stops (ongoing ambient
 pressure, unlike invasion's finite conquest) — delegating the actual price
-math to `economy.py`. Stage 4 adds `BehaviorProfile` decay (SPEC.md §5): unlike
+math to `economy.py`. Stage 4 adds `BehaviorProfile` decay: unlike
 the other three systems it isn't a `ScheduledEvent` at all — it's an ambient,
 every-elapsed-day tick (`behavior.tick`) called directly from the loop below,
 since it has no due-day/reschedule semantics of its own to route through
 `apply_event`. `advance_time` stays the single choke point every elapsed-time
 call routes through.
 
-Zero AI in this module itself — pure code (SPEC.md §2's "golden rule": most
+Zero AI in this module itself — pure code (the "golden rule": most
 turns cost zero AI calls; the daytime engine tick is one of the free ones).
 `_run_batch` delegates to `generation.pipeline.run_batch` (Step 5) when
 `state.generation` is a configured, enabled provider registry, and stays a
 no-op otherwise (no key configured — identical to its old placeholder
 behavior). Either way it's still called exactly once per `advance_time` call
-regardless of how many days elapsed (SPEC.md §4/§13's "exactly ONE batch per
+regardless of how many days elapsed (the "exactly ONE batch per
 elapsed span" invariant, proven by `test_advance_time_calls_the_batch_placeholder_exactly_once`
 before this function ever had anything real to call, and unchanged since).
 """
@@ -28,7 +28,7 @@ from .events import EventKind, ScheduledEvent, validate_event
 from .state import GameState
 
 # Placeholder tuning constants — same status as combat.py's DOT_DURATION etc.
-# (SPEC.md §11: start rough, calibrate by feel).
+# (start rough, calibrate by feel).
 INVASION_SPREAD_INTERVAL_DAYS = 5
 PRICE_SHIFT_INTERVAL_DAYS = 3
 
@@ -36,7 +36,7 @@ PRICE_SHIFT_INTERVAL_DAYS = 3
 def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
     """Resolves one scheduled event's state change, always through World's
     existing atomic primitives (block_link/unblock_link) — never a direct row
-    mutation (SPEC.md §0 pillar 6). Returns narration line(s).
+    mutation. Returns narration line(s).
 
     Validates the payload's required keys (events.validate_event) before
     touching it, so a malformed event — e.g. one authored by a future
@@ -81,7 +81,7 @@ def apply_event(state: GameState, event: ScheduledEvent) -> list[str]:
 
 
 def _apply_price_shift(state: GameState) -> list[str]:
-    """Price volatility (SPEC.md §4/§10) — delegates the actual math to
+    """Price volatility — delegates the actual math to
     economy.apply_price_shift, then unconditionally reschedules. Unlike
     invasion, this chain never stops: price drift is an ongoing ambient
     pressure source, not a one-time conquest with a natural end."""
@@ -94,10 +94,10 @@ def _apply_price_shift(state: GameState) -> list[str]:
 
 
 def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]:
-    """The demon-king invasion (SPEC.md §3): a self-rescheduling chain of
+    """The demon-king invasion: a self-rescheduling chain of
     INVASION_SPREAD events. Each fire occupies every node reachable via an
     OPEN link from currently-occupied territory (an army stalls behind a
-    blockage the same as a traveler or rumor would — SPEC.md §10's "blocked
+    blockage the same as a traveler or rumor would — the "blocked
     links stop rumor flow" logic applies here too) and cuts the links it
     crosses. Node-occupation and link-blocking are done via recursive
     `apply_event` calls on synthetic sub-events, reusing SET_NODE_STATE/
@@ -132,7 +132,7 @@ def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]
     # unrelated temporary blockage (e.g. a blizzard) must still retry next
     # interval, or the invasion would permanently give up the first time
     # it's inconvenienced, contradicting its role as an ambient pressure
-    # source (SPEC.md §4) rather than a one-shot event.
+    # source rather than a one-shot event.
     if any(node.state != "occupied" for node in world.nodes.values()):
         world.schedule_event(ScheduledEvent(
             due_day=state.clock.current_day + INVASION_SPREAD_INTERVAL_DAYS,
@@ -144,8 +144,8 @@ def _apply_invasion_spread(state: GameState, event: ScheduledEvent) -> list[str]
 
 
 def _reveal_demon_king(state: GameState) -> list[str]:
-    """The invasion payoff ("Bosses as situations, not HP checks", SPEC.md
-    §6b/§11.1): once the whole graph has fallen, retag `World.
+    """The invasion payoff ("Bosses as situations, not HP checks"): once
+    the whole graph has fallen, retag `World.
     invasion_origin_id`'s node "demon_king" — game.handle_interact checks
     for that tag to offer the real fight (boss.DEMON_KING_ENCOUNTER).
     Deliberately NOT auto-triggered: this only makes the fight reachable,
@@ -203,7 +203,7 @@ def tick_day(state: GameState) -> list[str]:
 
 
 def _run_batch(state: GameState) -> None:
-    """The AI batch (Director -> Story -> Quest -> Places, SPEC.md §4/§7),
+    """The AI batch (Director -> Story -> Quest -> Places),
     delegated to generation.pipeline.run_batch (Step 5). Stays a no-op
     whenever state.generation is unset or disabled (no configured provider)
     — identical to this function's previous placeholder behavior in an
@@ -216,7 +216,7 @@ def _run_batch(state: GameState) -> None:
 
 
 def run_warm_start_batch(state: GameState) -> None:
-    """The warm-start batch (updates.md, "A warm-start generation batch,"
+    """The warm-start batch ("A warm-start generation batch,"
     resolved 2026-07-31): a brand-new save's Quests/Ask around both come
     back empty until `advance_time` fires its first real batch (Rest or
     travel) -- reads as blank/suffocating rather than "freedom" to a fresh
@@ -227,10 +227,10 @@ def run_warm_start_batch(state: GameState) -> None:
     elapsed-time tick already calls, not a second generation path: both
     streams run unchanged (no special-casing for "no accrued behavior
     yet" -- world-driven content is deliberately player-independent by
-    design, SPEC.md §7, and a fresh BehaviorProfile already degrades
+    design, and a fresh BehaviorProfile already degrades
     gracefully to a neutral hint), and this stays a no-op whenever
     state.generation is unset/disabled, exactly like `_run_batch` always
-    has. Consistent with (not an exception to) SPEC.md §13's "elapsed time
+    has. Consistent with (not an exception to) the "elapsed time
     triggers exactly one coalesced batch" invariant -- a new game
     beginning is a reasonable trigger for one batch, the same way any
     other elapsed span is."""
@@ -239,10 +239,10 @@ def run_warm_start_batch(state: GameState) -> None:
 
 def advance_time(state: GameState, days: int) -> list[str]:
     """The coalesced choke point every elapsed-time call routes through
-    (travel, rest — combat deliberately never calls this, SPEC.md §4/§6b
+    (travel, rest — combat deliberately never calls this, per Combat RNG
     Stage 1). Runs one engine tick per elapsed day (cheap, pure code) but
     calls the AI batch placeholder exactly ONCE regardless of how many days
-    elapsed (SPEC.md §13) — a 12-day journey is 12 ticks + 1 batch, not 12."""
+    elapsed — a 12-day journey is 12 ticks + 1 batch, not 12."""
     if days < 0:
         raise ValueError("cannot advance a negative number of days")
     if days == 0:

@@ -1,4 +1,4 @@
-"""Action resolution (SPEC.md §6): the engine decides outcomes in code. This
+"""Action resolution: the engine decides outcomes in code. This
 part covers move/look/inventory/rest only — combat resolution is a later part.
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ def _resolve_move(action: Action, state: GameState) -> Outcome:
 
 
 def resolve_fast_travel(state: GameState, destination_id: str) -> Outcome:
-    """Multi-hop travel to a KNOWN node in one call (SPEC.md §3/§4: the Atlas
+    """Multi-hop travel to a KNOWN node in one call (the Atlas
     is what fast-travel navigates by; instant teleport is forbidden, so this
     still advances the clock by the route's full `travel_days`, same as a
     manual hop, just without stopping to look around partway). Menu-only —
@@ -162,7 +162,7 @@ def _resolve_inventory(state: GameState) -> Outcome:
 def _resolve_rest(state: GameState) -> Outcome:
     # Captured BEFORE the tick, so the newspaper's "leaked while asleep" diff
     # (newspaper.leaked_since) has a true before/after pair to compare — Rest
-    # is the only action that shows a newspaper at all (SPEC.md §10 frames it
+    # is the only action that shows a newspaper at all (the design frames it
     # specifically as "on wake"; Move/fast-travel keep their existing
     # tick-log narration only).
     location_id = state.player.location_id

@@ -1,13 +1,12 @@
-"""Scheduled world events (SPEC.md §3/§12 step 2) — the "timers" half of world
+"""Scheduled world events — the "timers" half of world
 simulation. Same discipline as `skills.py`'s effects vocabulary: `kind` is a
-FIXED enumerated set, never free text, never AI-adjudicated (SPEC.md §13).
+FIXED enumerated set, never free text, never AI-adjudicated.
 Extend the enum deliberately per build stage (invasion/price-shift kinds land
 in later stages) — never open it to arbitrary strings.
 
 An event only ever *describes* a state change; `sim.apply_event` is what
 actually performs it, always through World's existing atomic state-flip
-primitives (`block_link`/`unblock_link`) — never a direct row mutation
-(SPEC.md §0 pillar 6).
+primitives (`block_link`/`unblock_link`) — never a direct row mutation.
 """
 from __future__ import annotations
 
@@ -19,8 +18,8 @@ class EventKind(str, Enum):
     BLOCK_LINK = "block_link"
     UNBLOCK_LINK = "unblock_link"
     SET_NODE_STATE = "set_node_state"
-    INVASION_SPREAD = "invasion_spread"  # Stage 2 (SPEC.md §3) — see sim.apply_event
-    PRICE_SHIFT = "price_shift"  # Stage 3 (SPEC.md §4/§10) — see economy.apply_price_shift
+    INVASION_SPREAD = "invasion_spread"  # Stage 2 — see sim.apply_event
+    PRICE_SHIFT = "price_shift"  # Stage 3 — see economy.apply_price_shift
 
 
 # Required payload keys per kind — validate_event's structural boundary.

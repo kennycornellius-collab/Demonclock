@@ -1,5 +1,5 @@
 """Small hand-authored enemy table — mirrors seed.py's pattern. Real enemy
-content is generated later (SPEC.md §12 steps 4-5); this is just enough to
+content is generated later; this is just enough to
 fight something in this build stage.
 """
 from __future__ import annotations

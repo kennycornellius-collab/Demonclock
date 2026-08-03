@@ -1,4 +1,4 @@
-"""The NPC agent (SPEC.md §7, Step 10 Stage 3) -- mirrors places.py's shape
+"""The NPC agent (Step 10 Stage 3) -- mirrors places.py's shape
 exactly. Invoked only when a committed quest's own payload signals it wants
 an NPC that doesn't exist yet (`needs_new_npc`/`npc_hint`, extending
 QUEST_SCHEMA the same way `needs_new_place`/`place_hint` already does for
@@ -44,7 +44,7 @@ NEW_NPC_SCHEMA = {
         "name": {"type": "string"},
         "description": {"type": "string"},
         "tags": {"type": "array", "items": {"type": "string"}},
-        # "Faction standing: combat trigger" (updates.md, resolved
+        # "Faction standing: combat trigger" (resolved
         # 2026-07-31, Chunk C): a strict enum, never free text -- same
         # discipline skills.EffectKind/events.EventKind already enforce --
         # so a generated NPC can only ever land on a real npc_combat.

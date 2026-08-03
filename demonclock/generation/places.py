@@ -1,4 +1,4 @@
-"""The World/Places agent (SPEC.md §7 step 5) -- the last stage in the
+"""The World/Places agent -- the last stage in the
 Director -> Story -> Quest -> Places pipeline, and the one that closes
 Step 5. Extends the graph *only as needed*: it's invoked only when a
 committed quest's payload itself signals it wants a place that doesn't
@@ -7,7 +7,7 @@ anchored to an existing node never triggers this agent at all.
 
 The new place is added to the live graph EXCLUSIVELY through the engine's
 own constructors (`world.add_node`/`world.add_link`), never a raw row write
-(SPEC.md §0 pillar 6) -- `add_link` is what makes the new link
+-- `add_link` is what makes the new link
 bidirectional-by-construction and enforces `travel_days >= 1`, exactly the
 same guarantee every hand-authored link in `seed.py` gets. A proposal the
 constructor rejects (an unrecognized direction with no known opposite, a bad

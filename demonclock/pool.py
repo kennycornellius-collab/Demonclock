@@ -1,10 +1,10 @@
-"""The content pool + repair-or-reject loop (SPEC.md §7/§8, second of Step
+"""The content pool + repair-or-reject loop (second of Step
 4's three chunks). Generated items are never shown live — a generator
-writes them to a pool and the daytime loop pulls from it later (SPEC.md
-§7). Every item's precondition manifest (canon.py, Chunk A) is checked
+writes them to a pool and the daytime loop pulls from it later.
+Every item's precondition manifest (canon.py, Chunk A) is checked
 TWICE: once here at commit time, and again at pull time, since the world
 keeps moving between generation and consumption — an item valid when
-generated can go stale before it's ever drawn (SPEC.md §8: "an NPC
+generated can go stale before it's ever drawn ("an NPC
 referenced by a pooled quest can die from a world-timer event before the
 player ever draws that quest").
 
@@ -61,7 +61,7 @@ class CommitResult:
 # A repair callback gets the failing item and the specific requirements
 # that failed, and either hands back a patched item or gives up (None) —
 # "prefer repair over rejection... reject only when repair can't salvage
-# it" (SPEC.md §8). No real repair logic exists yet (that needs an actual
+# it." No real repair logic exists yet (that needs an actual
 # generator, Step 5); tests supply a synthetic one.
 RepairFn = Callable[[GeneratedItem, list[RequirementResult]], "GeneratedItem | None"]
 
@@ -94,7 +94,7 @@ def commit_or_repair(
 
 def pull(state: GameState, pool: list[GeneratedItem]) -> GeneratedItem | None:
     """Draws the oldest item whose manifest still holds against LIVE state
-    (SPEC.md §8: re-validated at pull time, not just commit time). Items
+    (re-validated at pull time, not just commit time). Items
     found stale along the way are silently discarded — popped off the
     pool, never returned, never left for a later pull to trip over again;
     "a stale item must never reach the player." Returns None once the pool
@@ -107,7 +107,7 @@ def pull(state: GameState, pool: list[GeneratedItem]) -> GeneratedItem | None:
 
 
 def pull_for_npc(state: GameState, pool: list[GeneratedItem], npc_id: str) -> GeneratedItem | None:
-    """NPC-quest link follow-up (updates.md, surfaced 2026-07-29): the same
+    """NPC-quest link follow-up (surfaced 2026-07-29): the same
     pull contract as `pull` (re-validates against LIVE state, silently
     discards anything found stale along the way — "a stale item must never
     reach the player") but scans the WHOLE pool for the oldest item whose

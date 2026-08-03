@@ -26,7 +26,7 @@ def test_no_match_returns_none():
 
 
 def test_duplicate_exact_names_are_ambiguous_and_unresolved():
-    # Exactly why identity must be an id, never a name (SPEC.md §8).
+    # Exactly why identity must be an id, never a name.
     shortlist = [("npc_001", "Old Lord"), ("npc_002", "Old Lord")]
     assert resolve_entity("Old Lord", shortlist) is None
 
@@ -60,7 +60,7 @@ def test_fuzzy_token_match_is_unresolved_on_a_shared_partial_name():
 
 
 def test_never_matches_something_absent_from_the_shortlist():
-    # Bounded context (SPEC.md §8): even a real, well-known name elsewhere
+    # Bounded context: even a real, well-known name elsewhere
     # in the world must not resolve unless it's actually on the shortlist
     # the caller retrieved.
     shortlist = [("npc_002", "Merchant Guild Rep")]
@@ -88,7 +88,7 @@ def test_resolves_against_real_world_nodes_by_name():
     assert resolve_entity("Some Unrelated Place", shortlist) is None
 
 
-# -- AI fallback (Step 5 Chunk D, SPEC.md §8) ------------------------------
+# -- AI fallback (Step 5 Chunk D) --------------------------------------------
 
 def test_ai_fallback_resolves_a_reference_the_deterministic_passes_could_not():
     shortlist = [("npc_001", "Old Lord"), ("npc_002", "Old Blacksmith")]
@@ -106,7 +106,7 @@ def test_ai_fallback_returns_none_on_the_no_match_sentinel():
 
 
 def test_ai_fallback_is_never_consulted_when_an_exact_match_already_resolves():
-    # "Most resolutions cost zero AI calls" (SPEC.md §6/§8) -- the AI step is
+    # "Most resolutions cost zero AI calls" -- the AI step is
     # a fallback, not a first-class check run every time.
     shortlist = [("npc_001", "Old Lord")]
     registry, client = make_registry_and_client([{"resolved_id": "npc_001"}])

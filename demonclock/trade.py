@@ -1,4 +1,4 @@
-"""Trading (SPEC.md §12 step 10, Stage 1): buy/sell against a node's tracked
+"""Trading (Step 10 Stage 1): buy/sell against a node's tracked
 Node.prices. Single price both directions -- no in-node bid/ask spread, since
 profit is geographic (economy.py's threat multiplier already makes the same
 good cost more near danger; a safer node's lower price is the arbitrage).
@@ -17,7 +17,7 @@ price) and no clock cost (trading is an instant Interact action, same
 footing as Look/Inventory) -- both "start rough, calibrate by feel" choices,
 same status as every other tuning constant in this codebase.
 
-"Faction standing: trade trigger" (updates.md, resolved 2026-07-31, Chunk
+"Faction standing: trade trigger" (resolved 2026-07-31, Chunk
 D): a completed trade at a faction-affiliated node (Node.faction_id, mirrors
 NPC.faction_id) nudges standing up ONE tier -- but only once a single
 trade's quantity clears TRADE_STANDING_THRESHOLD. STANDING_TIERS is a
